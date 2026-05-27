@@ -32,7 +32,7 @@ namespace AIMockInterviewer.API
             {
                 options.AddPolicy("AllowAll",
                     policyBuilder => policyBuilder
-                        .WithOrigins("http://localhost:5173", "http://localhost:5174", "https://ai-mockinterview-chinsuhdhs-projects.vercel.app/")
+                        .WithOrigins("http://localhost:5173", "http://localhost:5174", "https://ai-mockinterview-chinsuhdhs-projects.vercel.app")
                         .AllowAnyMethod()
                         .AllowAnyHeader()
                         .AllowCredentials());
