@@ -1,0 +1,71 @@
+# ==========================================
+# BACKEND: .NET CORE & VISUAL STUDIO
+# ==========================================
+
+# Thư mục chứa code biên dịch (Bắt buộc phải chặn)
+[Bb]in/
+[Oo]bj/
+
+# Thư mục cấu hình cá nhân của Visual Studio
+.vs/
+*.user
+*.suo
+*.rsuser
+*.userosscache
+*.sln.docstates
+
+# File log và cache của .NET
+*.log
+[Ll]og/
+[Ll]ogs/
+*.cache
+*.err
+
+# Appsettings chứa thông tin nhạy cảm (Tùy chọn: Bỏ comment nếu muốn giấu cả file này)
+appsettings.json
+appsettings.Development.json
+
+# ==========================================
+# FRONTEND: NODE.JS, REACT, VITE
+# ==========================================
+
+# Thư viện tải về (Rất nặng, bắt buộc phải chặn)
+node_modules/
+
+# File build của Frontend (Vite/React)
+dist/
+build/
+out/
+
+# File môi trường chứa API Key, Password của Frontend
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Log của npm/yarn
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ==========================================
+# HỆ ĐIỀU HÀNH (OS)
+# ==========================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
