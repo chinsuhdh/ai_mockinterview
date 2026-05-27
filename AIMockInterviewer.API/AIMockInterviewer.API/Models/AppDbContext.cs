@@ -35,12 +35,17 @@ public partial class AppDbContext : DbContext
     {
         if (!optionsBuilder.IsConfigured)
         {
-            IConfigurationRoot configuration = new ConfigurationBuilder()
-                .SetBasePath(AppDomain.CurrentDomain.BaseDirectory)
-                .AddJsonFile("appsettings.json")
-                .Build();
+            var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
 
-            var connectionString = configuration.GetConnectionString("DefaultConnection");
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                IConfigurationRoot configuration = new ConfigurationBuilder()
+                    .SetBasePath(Directory.GetCurrentDirectory())
+                    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true) 
+                    .Build();
+
+                connectionString = configuration.GetConnectionString("DefaultConnection");
+            }
 
             optionsBuilder.UseNpgsql(connectionString);
         }
