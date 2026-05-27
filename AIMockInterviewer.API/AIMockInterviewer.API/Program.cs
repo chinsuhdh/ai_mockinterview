@@ -28,12 +28,11 @@ namespace AIMockInterviewer.API
             builder.Services.AddScoped<IAdminService, AdminService>();
             builder.Services.AddScoped<VnPayService>();
 
-            // CẤU HÌNH CORS MỚI
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy("AllowAll",
                     policyBuilder => policyBuilder
-                        .WithOrigins("http://localhost:5173", "https://ai-mockinterview.vercel.app")
+                        .WithOrigins("http://localhost:5173", "http://localhost:5174", "https://ai-mockinterview-amber.vercel.app")
                         .AllowAnyMethod()
                         .AllowAnyHeader()
                         .AllowCredentials());
