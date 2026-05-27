@@ -29,7 +29,7 @@ export const callAI = async (prompt, temperature = 0.7, model = 'gemini') => {
 // 2. BACKEND AXIOS INSTANCE (C# .NET)
 // ─────────────────────────────────────────────
 const apiClient = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL || 'https://localhost:7064',
+    baseURL: import.meta.env.VITE_API_BASE_URL || 'https://ai-mockinterview.onrender.com/',
     headers: { 'Content-Type': 'application/json' },
     timeout: 15000,
 });
