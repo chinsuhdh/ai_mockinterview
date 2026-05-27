@@ -4,9 +4,9 @@ import axios from 'axios';
 // BACKEND AXIOS INSTANCE (C# .NET)
 // ─────────────────────────────────────────────
 const apiClient = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL || 'https://ai-mockinterview.onrender.com/',
+    baseURL: import.meta.env.VITE_API_BASE_URL || 'https://ai-mockinterview.onrender.com',
     headers: { 'Content-Type': 'application/json' },
-    timeout: 15000, 
+    timeout: 60000, 
 });
 
 apiClient.interceptors.request.use(
