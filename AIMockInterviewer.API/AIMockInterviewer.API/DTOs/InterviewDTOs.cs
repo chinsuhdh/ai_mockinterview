@@ -4,9 +4,10 @@ namespace AIMockInterviewer.API.DTOs
 {
     public class StartInterviewRequest
     {
-        public string JdTitle { get; set; } = null!;
-        public string JdContent { get; set; } = null!; 
-        public IFormFile? CvFile { get; set; } 
+        public string? JdTitle { get; set; } 
+        public string? JdContent { get; set; } 
+        public IFormFile? JdFile { get; set; } 
+        public IFormFile? CvFile { get; set; }
     }
 
     public class StartInterviewResponse
@@ -61,4 +62,6 @@ namespace AIMockInterviewer.API.DTOs
         public int score { get; set; }
         public string comment { get; set; } = string.Empty;
     }
+
+
 }

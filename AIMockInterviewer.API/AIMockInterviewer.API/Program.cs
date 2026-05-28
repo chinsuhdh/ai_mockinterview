@@ -28,6 +28,9 @@ namespace AIMockInterviewer.API
             builder.Services.AddScoped<IAdminService, AdminService>();
             builder.Services.AddScoped<VnPayService>();
 
+            builder.Services.AddHttpClient();
+            builder.Services.AddSingleton<IVisitorTrackingService, VisitorTrackingService>();
+
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy("AllowAll",
@@ -66,7 +69,7 @@ namespace AIMockInterviewer.API
             {
                 c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
                 {
-                    Description = "Chỉ cần dán Token JWT của bạn vào ô bên dưới (KHÔNG cần thêm chữ Bearer).",
+                    Description = "Authorization",
                     Name = "Authorization",
                     In = ParameterLocation.Header,
                     Type = SecuritySchemeType.Http,
@@ -92,17 +95,14 @@ namespace AIMockInterviewer.API
 
             var app = builder.Build();
 
-            // LƯU Ý: Thường nên để Swagger mở kể cả trên Production khi mới deploy để dễ test
-            // Bạn có thể xóa dòng if (app.Environment.IsDevelopment()) nếu muốn mở Swagger trên Render
             if (app.Environment.IsDevelopment())
             {
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
 
-            app.UseRouting(); // Bắt buộc phải có UseRouting trước UseCors
-
-            // KÍCH HOẠT CORS
+            app.UseRouting();
+            app.UseMiddleware<AIMockInterviewer.API.Middlewares.VisitorTrackingMiddleware>();
             app.UseCors("AllowAll");
 
             app.UseHttpsRedirection();

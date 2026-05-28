@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { 
-    Send, Bot, User, Upload, Mic, 
-    MessageSquare, Volume2, StopCircle, Loader2, CheckCircle2, ChevronRight,
-    ArrowLeft, Sparkles, X, Crown, FileText, Zap, Lock, Cpu
+    Send, Bot, User, Mic, 
+    MessageSquare, StopCircle, Loader2, CheckCircle2, ChevronRight,
+    ArrowLeft, Sparkles, X, Crown, FileText, Zap, Lock, Cpu, Briefcase
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const StepIndicator = ({ step, language }) => {
     const steps = [
-        { id: 1, label: language === 'en' ? 'Setup JD' : 'Thiết lập JD' },
+        { id: 1, label: language === 'en' ? 'Setup Profile & JD' : 'Thiết lập Hồ sơ & JD' },
         { id: 2, label: language === 'en' ? 'Select Mode' : 'Chọn chế độ' },
         { id: 3, label: language === 'en' ? 'Interview' : 'Phỏng vấn' }
     ];
@@ -55,19 +56,25 @@ const StepIndicator = ({ step, language }) => {
 };
 
 export default function Interview() {
+    const [searchParams] = useSearchParams();
+    const resumeSessionId = searchParams.get('sessionId');
+
     const [step, setStep] = useState(1); 
     const [mode, setMode] = useState('chat'); 
     const [language, setLanguage] = useState('vi'); 
     const [selectedModel, setSelectedModel] = useState('gemini');
 
+    // Các state quản lý File và Text
     const [jdText, setJdText] = useState('');
+    const [cvFile, setCvFile] = useState(null);
+    const [jdFile, setJdFile] = useState(null);
+
     const [sessionId, setSessionId] = useState(null);
     const [messages, setMessages] = useState([]);
     
     const [loading, setLoading] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [isSpeaking, setIsSpeaking] = useState(false);
-    const [fileName, setFileName] = useState('');
 
     const [hint, setHint] = useState(null);
     const [loadingHint, setLoadingHint] = useState(false);
@@ -85,13 +92,39 @@ export default function Interview() {
     const recognitionRef = useRef(null);
     const synthRef = useRef(typeof window !== 'undefined' ? window.speechSynthesis : null);
 
+    // Resume Session Logic
+    useEffect(() => {
+        if (resumeSessionId) {
+            const loadExistingSession = async () => {
+                setLoading(true);
+                try {
+                    const res = await api.get(`/api/Interview/${resumeSessionId}/resume`);
+                    if (res.data.success) {
+                        setSessionId(res.data.sessionId);
+                        const historyMessages = res.data.messages.map(m => ({
+                            sender: m.sender,
+                            content: m.content
+                        }));
+                        setMessages(historyMessages);
+                        setStep(3); 
+                    }
+                } catch (err) {
+                    console.error("Lỗi Resume:", err);
+                    alert("Phiên phỏng vấn đã kết thúc hoặc không tồn tại.");
+                    window.location.href = '/dashboard';
+                }
+                setLoading(false);
+            };
+            loadExistingSession();
+        }
+    }, [resumeSessionId]);
+
     useEffect(() => {
         const loadVoices = () => window.speechSynthesis.getVoices();
         loadVoices();
         if (window.speechSynthesis.onvoiceschanged !== undefined) {
             window.speechSynthesis.onvoiceschanged = loadVoices;
         }
-
         return () => window.speechSynthesis.cancel();
     }, []);
 
@@ -99,40 +132,12 @@ export default function Interview() {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); 
     }, [messages]);
 
-    const handleFileUpload = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        setFileName(file.name);
-        setLoading(true);
-
-        if (file.type === "text/plain") {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                setJdText(event.target.result);
-                setLoading(false);
-            };
-            reader.onerror = () => {
-                alert("Lỗi đọc file txt");
-                setLoading(false);
-            };
-            reader.readAsText(file);
-        } else if (file.type === "application/pdf") {
-            setLoading(false);
-            alert("Với bản Demo, vui lòng sử dụng file .txt hoặc Copy-Paste nội dung JD trực tiếp vào ô bên dưới nhé!");
-            setFileName('');
-        } else {
-            setLoading(false);
-            alert("Vui lòng tải lên file .txt");
-            setFileName('');
-        }
-        
-        e.target.value = ''; 
-    };
-
     const handleStart = async () => {
-        if (!jdText.trim()) {
-            return alert(language === 'en' ? "Please enter JD or upload file!" : "Vui lòng nhập JD hoặc tải file!");
+        // Kiểm tra phải có ít nhất CV hoặc JD
+        if (!jdText.trim() && !cvFile && !jdFile) {
+            return alert(language === 'en' 
+                ? "Please provide at least a CV or a Job Description to start!" 
+                : "Vui lòng cung cấp ít nhất CV hoặc Mô tả công việc (JD) để bắt đầu!");
         }
 
         const sessions = JSON.parse(localStorage.getItem('interview_sessions') || '[]');
@@ -147,8 +152,17 @@ export default function Interview() {
         setLoading(true);
         try {
             const formData = new FormData();
-            formData.append('JdTitle', jdText.substring(0, 50)); 
-            formData.append('JdContent', jdText);
+            
+            // Tạo Title tự động dựa trên dữ liệu đầu vào
+            let generatedTitle = "Phỏng vấn Đánh giá năng lực";
+            if (jdFile) generatedTitle = jdFile.name;
+            else if (jdText) generatedTitle = jdText.substring(0, 40) + "...";
+            else if (cvFile) generatedTitle = "Phỏng vấn CV: " + cvFile.name;
+
+            formData.append('JdTitle', generatedTitle); 
+            if (jdText.trim()) formData.append('JdContent', jdText);
+            if (jdFile) formData.append('JdFile', jdFile);
+            if (cvFile) formData.append('CvFile', cvFile);
             formData.append('Language', language);
 
             const res = await api.post('/api/Interview/start', formData, {
@@ -165,7 +179,7 @@ export default function Interview() {
             setStep(2); 
         } catch (err) {
             console.error(err);
-            alert('Error starting session: ' + (err.response?.data?.message || err.message));
+            alert('Lỗi khởi tạo phiên: ' + (err.response?.data?.message || err.message));
         }
         setLoading(false);
     };
@@ -217,17 +231,16 @@ export default function Interview() {
         synthRef.current.speak(utterance);
     };
 
-    const endSession = () => {
-        const sessions = JSON.parse(localStorage.getItem('interview_sessions') || '[]');
-        sessions.push({
-            id: sessionId || Date.now(),
-            date: new Date().toLocaleDateString('vi-VN'),
-            jdTitle: jdText.substring(0, 30) + "...",
-            score: Math.floor(Math.random() * (95 - 60 + 1)) + 60, 
-            status: "Hoàn thành"
-        });
-        localStorage.setItem('interview_sessions', JSON.stringify(sessions));
-        window.location.href = '/dashboard';
+    const endSession = async () => {
+        setLoading(true);
+        try {
+            await api.post(`/api/Interview/${sessionId}/end`);
+            window.location.href = `/dashboard/session/${sessionId}`; 
+        } catch (err) {
+            console.error("Lỗi khi kết thúc phiên:", err);
+            window.location.href = '/dashboard';
+        }
+        setLoading(false);
     };
 
     const handleSendMessage = async (text) => {
@@ -298,13 +311,9 @@ export default function Interview() {
             });
             
             const hintData = res.data;
-            let hintText = "";
-            
-            if (language === 'en') {
-                hintText = hintData.hintEn || hintData.hintVi || "No hint available.";
-            } else {
-                hintText = hintData.hintVi || hintData.hintEn || "Không có gợi ý.";
-            }
+            let hintText = language === 'en' 
+                ? (hintData.hintEn || hintData.hintVi || "No hint available.") 
+                : (hintData.hintVi || hintData.hintEn || "Không có gợi ý.");
 
             setHint(hintText); 
 
@@ -320,7 +329,7 @@ export default function Interview() {
             <div className="min-h-screen bg-[#F9FAFB] flex flex-col p-6 font-sans text-neutral-900 selection:bg-amber-100 relative">
                 <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col justify-center">
                     <div className="absolute top-6 left-6 z-10">
-                        <button onClick={() => window.location.href = '/'} className="group flex items-center gap-2 text-neutral-500 hover:text-neutral-900 transition-all font-medium px-4 py-2 rounded-xl hover:bg-neutral-100">
+                        <button onClick={() => window.location.href = '/dashboard'} className="group flex items-center gap-2 text-neutral-500 hover:text-neutral-900 transition-all font-medium px-4 py-2 rounded-xl hover:bg-neutral-100">
                             <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
                             <span>{language === 'en' ? 'Dashboard' : 'Bảng điều khiển'}</span>
                         </button>
@@ -342,7 +351,7 @@ export default function Interview() {
                                     {language === 'en' ? 'Configure Interview' : 'Thiết lập phỏng vấn'}
                                 </h2>
                                 <p className="text-neutral-500 font-medium text-sm md:text-base">
-                                    {language === 'en' ? 'Provide the job description to tailor the AI questions.' : 'Cung cấp mô tả công việc để AI điều chỉnh câu hỏi.'}
+                                    {language === 'en' ? 'Provide your CV and Job Description to tailor the AI questions.' : 'Cung cấp CV và Mô tả công việc để AI phân tích và đưa ra câu hỏi sát thực tế nhất.'}
                                 </p>
                                 <div className="mt-3 inline-block">
                                     <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wide ${userPlan === 'pro' ? 'bg-amber-50 text-amber-600 border border-amber-200/50' : 'bg-neutral-100 text-neutral-600 border border-neutral-200'}`}>
@@ -366,40 +375,63 @@ export default function Interview() {
                             </div>
                         </div>
 
-                        <div className="space-y-5">
-                            <label className="group relative flex flex-col items-center justify-center cursor-pointer border-2 border-dashed border-neutral-200 hover:border-amber-400 hover:bg-amber-50/30 rounded-2xl p-8 transition-all duration-200">
-                                <div className="w-14 h-14 mb-4 bg-white shadow-sm border border-neutral-100 rounded-full flex items-center justify-center text-neutral-600 group-hover:text-amber-500 group-hover:scale-110 transition-all duration-300">
-                                    {loading ? <Loader2 className="animate-spin text-amber-500" size={24}/> : <FileText size={24} />}
-                                </div>
-                                <div className="text-center">
-                                    <span className="font-semibold text-neutral-800 block text-base mb-1">
-                                        {loading ? (language === 'en' ? 'Extracting text...' : 'Đang trích xuất...') : (language === 'en' ? 'Click or drag to upload JD' : 'Bấm hoặc kéo thả file JD vào đây')}
-                                    </span>
-                                    <span className="text-neutral-400 text-sm font-medium">
-                                        {language === 'en' ? 'Supports .TXT format' : 'Hỗ trợ định dạng .TXT'}
-                                    </span>
-                                </div>
-                                {fileName && (
-                                    <motion.div initial={{opacity:0, scale:0.9}} animate={{opacity:1, scale:1}} className="absolute bottom-4 text-xs font-semibold text-amber-700 bg-amber-100 px-3 py-1 rounded-full flex items-center gap-1.5">
-                                        <CheckCircle2 size={14}/> {fileName}
-                                    </motion.div>
-                                )}
-                                <input type="file" className="hidden" accept=".txt" onChange={handleFileUpload} disabled={loading} />
-                            </label>
+                        <div className="space-y-6">
+                            
+                            {/* Grid 2 ô tải file CV và JD */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {/* Khối tải CV */}
+                                <label className="group relative flex flex-col items-center justify-center cursor-pointer border-2 border-dashed border-neutral-200 hover:border-blue-400 hover:bg-blue-50/30 rounded-2xl p-6 transition-all duration-200">
+                                    <div className="w-12 h-12 mb-3 bg-white shadow-sm border border-neutral-100 rounded-full flex items-center justify-center text-neutral-600 group-hover:text-blue-500 group-hover:scale-110 transition-all duration-300">
+                                        <Briefcase size={20} />
+                                    </div>
+                                    <div className="text-center">
+                                        <span className="font-semibold text-neutral-800 block text-sm mb-1">
+                                            {language === 'en' ? 'Upload CV (Optional)' : 'Tải lên CV (Tùy chọn)'}
+                                        </span>
+                                        <span className="text-neutral-400 text-xs font-medium">.PDF format</span>
+                                    </div>
+                                    {cvFile && (
+                                        <div className="absolute bottom-3 text-[11px] font-semibold text-blue-700 bg-blue-100 px-2.5 py-1 rounded-full flex items-center gap-1 max-w-[90%] overflow-hidden truncate">
+                                            <CheckCircle2 size={12} className="shrink-0"/> {cvFile.name}
+                                        </div>
+                                    )}
+                                    <input type="file" className="hidden" accept=".pdf" onChange={(e) => setCvFile(e.target.files[0])} disabled={loading} />
+                                </label>
 
-                            <div className="flex items-center gap-4 py-2">
+                                {/* Khối tải JD */}
+                                <label className="group relative flex flex-col items-center justify-center cursor-pointer border-2 border-dashed border-neutral-200 hover:border-amber-400 hover:bg-amber-50/30 rounded-2xl p-6 transition-all duration-200">
+                                    <div className="w-12 h-12 mb-3 bg-white shadow-sm border border-neutral-100 rounded-full flex items-center justify-center text-neutral-600 group-hover:text-amber-500 group-hover:scale-110 transition-all duration-300">
+                                        <FileText size={20} />
+                                    </div>
+                                    <div className="text-center">
+                                        <span className="font-semibold text-neutral-800 block text-sm mb-1">
+                                            {language === 'en' ? 'Upload JD (Optional)' : 'Tải lên JD (Tùy chọn)'}
+                                        </span>
+                                        <span className="text-neutral-400 text-xs font-medium">.PDF format</span>
+                                    </div>
+                                    {jdFile && (
+                                        <div className="absolute bottom-3 text-[11px] font-semibold text-amber-700 bg-amber-100 px-2.5 py-1 rounded-full flex items-center gap-1 max-w-[90%] overflow-hidden truncate">
+                                            <CheckCircle2 size={12} className="shrink-0"/> {jdFile.name}
+                                        </div>
+                                    )}
+                                    <input type="file" className="hidden" accept=".pdf" onChange={(e) => setJdFile(e.target.files[0])} disabled={loading} />
+                                </label>
+                            </div>
+
+                            <div className="flex items-center gap-4 py-1">
                                 <div className="h-px bg-neutral-200 flex-1"></div>
-                                <span className="text-neutral-400 text-xs font-bold uppercase tracking-wider">{language === 'en' ? 'Or paste below' : 'Hoặc dán vào dưới đây'}</span>
+                                <span className="text-neutral-400 text-xs font-bold uppercase tracking-wider">{language === 'en' ? 'Or paste JD below' : 'Hoặc dán Text JD vào dưới đây'}</span>
                                 <div className="h-px bg-neutral-200 flex-1"></div>
                             </div>
 
                             <textarea 
-                                className="w-full h-48 p-5 border border-neutral-200 rounded-2xl outline-none bg-[#FAFAFA] hover:bg-white focus:bg-white focus:ring-4 focus:ring-amber-500/10 focus:border-amber-400 transition-all text-sm font-medium text-neutral-800 resize-none shadow-inner"
+                                className="w-full h-40 p-5 border border-neutral-200 rounded-2xl outline-none bg-[#FAFAFA] hover:bg-white focus:bg-white focus:ring-4 focus:ring-amber-500/10 focus:border-amber-400 transition-all text-sm font-medium text-neutral-800 resize-none shadow-inner"
                                 placeholder={language === 'en' ? 'Paste the full Job Description here...' : 'Dán toàn bộ nội dung Mô tả công việc (Job Description) vào đây...'}
                                 value={jdText}
                                 onChange={e => setJdText(e.target.value)}
                             />
 
+                            {/* Cấu hình Model */}
                             <div className="mt-6 pt-6 border-t border-neutral-100">
                                 <h3 className="text-sm font-bold text-neutral-900 mb-3 flex items-center gap-2">
                                     <Cpu size={16} className="text-amber-500" />
@@ -421,11 +453,8 @@ export default function Interview() {
 
                                     <div 
                                         onClick={() => {
-                                            if (userPlan === 'pro') {
-                                                setSelectedModel('gpt4');
-                                            } else {
-                                                alert(language === 'en' ? "Please upgrade to Pro plan to use GPT-4o!" : "Vui lòng nâng cấp gói Pro để sử dụng GPT-4o!");
-                                            }
+                                            if (userPlan === 'pro') setSelectedModel('gpt4');
+                                            else alert(language === 'en' ? "Please upgrade to Pro plan to use GPT-4o!" : "Vui lòng nâng cấp gói Pro để sử dụng GPT-4o!");
                                         }}
                                         className={`relative flex items-center p-4 border-2 rounded-xl transition-all duration-200 ${userPlan !== 'pro' ? 'opacity-60 bg-neutral-50 cursor-not-allowed border-neutral-200' : selectedModel === 'gpt4' ? 'border-blue-500 bg-blue-50/50 cursor-pointer' : 'border-neutral-200 hover:border-blue-200 bg-white cursor-pointer'}`}
                                     >
@@ -453,7 +482,7 @@ export default function Interview() {
                             whileHover={{ y: -2 }}
                             whileTap={{ scale: 0.98 }} 
                             onClick={handleStart} 
-                            disabled={loading || !jdText.trim()} 
+                            disabled={loading || (!jdText.trim() && !cvFile && !jdFile)} 
                             className="w-full mt-8 bg-gradient-to-b from-neutral-800 to-neutral-900 hover:from-neutral-700 hover:to-neutral-900 text-white py-4 px-6 rounded-2xl font-bold flex justify-center items-center gap-2 shadow-[0_4px_14px_0_rgb(0,0,0,0.2)] disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed transition-all duration-200"
                         >
                             {loading ? <Loader2 className="animate-spin" size={20} /> : (

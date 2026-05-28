@@ -98,5 +98,66 @@ namespace AIMockInterviewer.API.Controllers
                 return StatusCode(500, new { Success = false, Message = $"Lỗi hệ thống: {ex.Message}" });
             }
         }
+
+        [HttpGet("{sessionId}/resume")]
+        public async Task<IActionResult> ResumeSession(Guid sessionId)
+        {
+            try
+            {
+                var userId = GetUserId();
+                dynamic result = await _interviewService.ResumeSessionAsync(userId, sessionId);
+
+                if (result.Success == false)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { Success = false, Message = $"Lỗi hệ thống: {ex.Message}" });
+            }
+        }
+
+        // Khai báo class phụ này ở ngoài hoặc trong namespace đều được (tốt nhất là để dưới cùng file Controller)
+        public class GeneralChatRequestDto
+        {
+            public string UserMessage { get; set; } = null!;
+        }
+
+        [AllowAnonymous] 
+        [HttpPost("general-chat")]
+        public async Task<IActionResult> GeneralChat([FromBody] GeneralChatRequestDto request)
+        {
+            try
+            {
+                if (request == null || string.IsNullOrWhiteSpace(request.UserMessage))
+                    return BadRequest(new { Success = false, Message = "Tin nhắn không được để trống." });
+
+                
+                string jsonResponse = await _aiService.GetGeneralChatResponse(request.UserMessage);
+
+               
+                string finalReply = "";
+                try
+                {
+                    string cleanJson = jsonResponse.Replace("```json", "").Replace("```", "").Trim();
+                    using var doc = System.Text.Json.JsonDocument.Parse(cleanJson);
+                    finalReply = doc.RootElement.GetProperty("reply").GetString() ?? "";
+                }
+                catch
+                {
+                    finalReply = jsonResponse; 
+                }
+
+                return Ok(new { response = finalReply });
+            }
+            catch (Exception ex)
+            {
+                
+                return StatusCode(500, new { Success = false, Message = $"Lỗi hệ thống AI: {ex.Message}" });
+            }
+        }
     }
 }

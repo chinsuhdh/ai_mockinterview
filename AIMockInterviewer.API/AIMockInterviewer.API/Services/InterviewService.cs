@@ -27,20 +27,43 @@ namespace AIMockInterviewer.API.Services
 
             int maxInterviews = activeSub != null ? activeSub.Plan.MaxInterviewsPerMonth : 3;
             if (maxInterviews != -1 && sessionsThisMonth >= maxInterviews)
-                return new { Success = false, Message = $"Bạn đã hết {maxInterviews} lượt phỏng vấn miễn phí trong tháng. Vui lòng nâng cấp gói Premium (99.000 VNĐ)." };
+                return new { Success = false, Message = $"Bạn đã hết {maxInterviews} lượt phỏng vấn miễn phí trong tháng. Vui lòng nâng cấp gói Premium." };
 
-            string cvText = "Người dùng không cung cấp CV.";
+            // 1. Xử lý CV
+            string cvText = "Ứng viên không cung cấp CV.";
             if (request.CvFile != null && request.CvFile.Length > 0)
             {
                 if (!request.CvFile.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
-                    return new { Success = false, Message = "Hệ thống hiện tại chỉ hỗ trợ file PDF cho CV." };
+                    return new { Success = false, Message = "Hệ thống chỉ hỗ trợ file PDF cho CV." };
 
                 using var stream = request.CvFile.OpenReadStream();
                 using var document = PdfDocument.Open(stream);
                 cvText = string.Join(" \n", document.GetPages().Select(p => p.Text));
             }
 
-            var jd = new JobDescription { UserId = userId, Title = request.JdTitle, Content = request.JdContent };
+            string jdText = "Không có mô tả công việc (JD). Phỏng vấn dựa trên CV hoặc kỹ năng chung.";
+            if (request.JdFile != null && request.JdFile.Length > 0)
+            {
+                if (!request.JdFile.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                    return new { Success = false, Message = "Hệ thống chỉ hỗ trợ file PDF cho JD." };
+
+                using var stream = request.JdFile.OpenReadStream();
+                using var document = PdfDocument.Open(stream);
+                jdText = string.Join(" \n", document.GetPages().Select(p => p.Text));
+            }
+            else if (!string.IsNullOrWhiteSpace(request.JdContent))
+            {
+                jdText = request.JdContent;
+            }
+
+            if (cvText == "Ứng viên không cung cấp CV." && jdText.StartsWith("Không có mô tả công việc"))
+            {
+                return new { Success = false, Message = "Vui lòng cung cấp ít nhất CV hoặc Mô tả công việc (JD) để bắt đầu." };
+            }
+
+            string finalJdTitle = string.IsNullOrWhiteSpace(request.JdTitle) ? "Phỏng vấn Đánh giá năng lực" : request.JdTitle;
+
+            var jd = new JobDescription { UserId = userId, Title = finalJdTitle, Content = jdText };
             _context.JobDescriptions.Add(jd);
             await _context.SaveChangesAsync();
 
@@ -52,12 +75,13 @@ namespace AIMockInterviewer.API.Services
             {
                 InterviewSessionId = session.Id,
                 SenderRole = "System",
-                MessageContent = $"[HƯỚNG DẪN CHO AI]\nJD: {request.JdContent}\n\nCV Ứng viên:\n{cvText}"
+                MessageContent = $"[HƯỚNG DẪN CHO AI]\nJD: {jdText}\n\nCV Ứng viên:\n{cvText}"
             };
             _context.InterviewMessages.Add(contextMessage);
             await _context.SaveChangesAsync();
 
-            string questionsJson = await _aiService.AnalyzeJdAndCreateQuestions(request.JdContent);
+            string aiContextData = $"Thông tin tuyển dụng (JD): {jdText}\n\nHồ sơ ứng viên (CV): {cvText}";
+            string questionsJson = await _aiService.AnalyzeJdAndCreateQuestions(aiContextData);
 
             List<QuestionItem> questions = new List<QuestionItem>();
             try
@@ -191,6 +215,38 @@ namespace AIMockInterviewer.API.Services
             {
                 return new { Success = false, Message = $"Lỗi trong quá trình AI chấm điểm: {ex.Message}" };
             }
+        }
+
+        public async Task<object> ResumeSessionAsync(Guid userId, Guid sessionId)
+        {
+            var session = await _context.InterviewSessions
+                .Include(s => s.JobDescription)
+                .Include(s => s.InterviewMessages)
+                .FirstOrDefaultAsync(s => s.Id == sessionId && s.UserId == userId);
+
+            if (session == null)
+                return new { Success = false, Message = "Phiên phỏng vấn không tồn tại." };
+
+            if (session.Status != "In-Progress")
+                return new { Success = false, Message = "Phiên phỏng vấn này đã kết thúc, chỉ có thể xem lịch sử.", IsCompleted = true };
+
+            var messages = session.InterviewMessages
+                .Where(m => m.SenderRole != "System")
+                .OrderBy(m => m.CreatedAt)
+                .Select(m => new
+                {
+                    Sender = m.SenderRole,
+                    Content = m.MessageContent,
+                    Timestamp = m.CreatedAt
+                }).ToList();
+
+            return new
+            {
+                Success = true,
+                SessionId = session.Id,
+                JobTitle = session.JobDescription?.Title ?? "Phỏng vấn",
+                Messages = messages
+            };
         }
     }
 }

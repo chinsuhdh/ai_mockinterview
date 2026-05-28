@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
     User, Mail, Crown, LogOut, ArrowLeft, CheckCircle2, ShieldCheck, 
-    Camera, Settings, Bell, Lock, Trophy, Target, Globe, ChevronRight, Loader2, AlertCircle 
+    Camera, Settings, Bell, Lock, Trophy, Target, Globe, ChevronRight, 
+    Loader2, AlertCircle, GraduationCap, BookOpen // Thêm 2 icon mới cho trường và ngành
 } from 'lucide-react';
 import { getProfile, updateProfile } from '../services/userService';
 import { getSubscriptionPlans } from '../services/paymentService';
@@ -13,6 +14,9 @@ export default function Profile() {
     // --- Các States quản lý dữ liệu và UI ---
     const [fullName, setFullName] = useState('');
     const [email, setEmail] = useState('');
+    const [university, setUniversity] = useState(''); // Thêm state University
+    const [major, setMajor] = useState('');           // Thêm state Major
+    
     const [stats, setStats] = useState({ totalInterviews: 0, avgScore: 0, rank: '-' });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -35,15 +39,17 @@ export default function Profile() {
                 setError('');
                 const res = await getProfile();
                 
-                // Giả định API trả về object chứa { fullName, email, totalInterviews, avgScore, rank } 
-                // hoặc bọc qua một node data (res.data?.data) tùy thiết kế của bạn.
                 const profileData = res.data?.data || res.data;
 
                 if (profileData) {
-                    setFullName(profileData.fullName || profileData.FullName || 'Chưa cập nhật');
+                    setFullName(profileData.fullName || profileData.FullName || '');
                     setEmail(profileData.email || profileData.Email || '');
+                    // Lấy dữ liệu University và Major từ DB lên
+                    setUniversity(profileData.university || profileData.University || '');
+                    setMajor(profileData.major || profileData.Major || '');
+                    
                     setStats({
-                        totalInterviews: profileData.totalInterviews || profileData.TotalInterviews || 0,
+                        totalInterviews: profileData.interviewsDoneThisMonth || profileData.InterviewsDoneThisMonth || profileData.totalInterviews || 0,
                         avgScore: profileData.avgScore || profileData.AvgScore || 0,
                         rank: profileData.rank || profileData.Rank || '-'
                     });
@@ -96,7 +102,12 @@ export default function Profile() {
         
         try {
             setError('');
-            await updateProfile({ fullName });
+            // Gửi thêm trường university và major
+            await updateProfile({ 
+                fullName, 
+                university: university.trim() || null, 
+                major: major.trim() || null 
+            });
             
             // Cập nhật lại local storage để đồng bộ hiển thị ngoài trang chủ (Home.jsx)
             localStorage.setItem('fullName', fullName);
@@ -162,7 +173,7 @@ export default function Profile() {
                                 </div>
 
                                 <div className="mb-6">
-                                    <h1 className="text-2xl font-black text-neutral-900">{fullName}</h1>
+                                    <h1 className="text-2xl font-black text-neutral-900">{fullName || 'Chưa cập nhật tên'}</h1>
                                     <p className="text-neutral-500 font-medium text-sm flex items-center gap-1.5 mt-1"><Mail size={14}/> {email}</p>
                                 </div>
 
@@ -204,6 +215,31 @@ export default function Profile() {
                                             />
                                         </div>
                                     </div>
+
+                                    {/* Thêm 2 ô nhập cho University và Major */}
+                                    <div className="grid sm:grid-cols-2 gap-4">
+                                        <div className="relative group">
+                                            <GraduationCap className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-amber-500 transition-colors" size={18} />
+                                            <input 
+                                                type="text" 
+                                                value={university} 
+                                                onChange={(e) => setUniversity(e.target.value)} 
+                                                className="w-full bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 rounded-xl pl-12 pr-4 py-3 outline-none focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all font-bold text-sm" 
+                                                placeholder="Trường Đại học (Ví dụ: FPT University)"
+                                            />
+                                        </div>
+                                        <div className="relative group">
+                                            <BookOpen className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-amber-500 transition-colors" size={18} />
+                                            <input 
+                                                type="text" 
+                                                value={major} 
+                                                onChange={(e) => setMajor(e.target.value)} 
+                                                className="w-full bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 rounded-xl pl-12 pr-4 py-3 outline-none focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all font-bold text-sm" 
+                                                placeholder="Chuyên ngành (Ví dụ: Software Engineering)"
+                                            />
+                                        </div>
+                                    </div>
+
                                     <div className="flex items-center gap-4 pt-2">
                                         <button onClick={handleSave} className="px-6 py-3 bg-neutral-900 text-white rounded-xl font-bold text-sm hover:bg-black transition-all">Cập nhật hồ sơ</button>
                                         {saved && <span className="flex items-center gap-1.5 text-green-600 font-bold text-sm"><CheckCircle2 size={16}/> Đã lưu thành công</span>}
@@ -215,13 +251,13 @@ export default function Profile() {
                         <div className="bg-white p-6 rounded-3xl shadow-sm border border-neutral-100 delay-100 animate-fade-in-up">
                             <div className="flex justify-between text-sm font-bold mb-3">
                                 <span className="text-neutral-700">Mức độ hoàn thiện hồ sơ</span>
-                                <span className="text-green-500">{fullName ? "100%" : "50%"}</span>
+                                <span className="text-green-500">{(fullName && university && major) ? "100%" : (fullName ? "60%" : "30%")}</span>
                             </div>
                             <div className="w-full bg-neutral-100 rounded-full h-2.5 overflow-hidden mb-3">
-                                <div className="bg-green-500 h-full rounded-full transition-all duration-500" style={{ width: fullName ? '100%' : '50%' }}></div>
+                                <div className="bg-green-500 h-full rounded-full transition-all duration-500" style={{ width: (fullName && university && major) ? '100%' : (fullName ? '60%' : '30%') }}></div>
                             </div>
                             <p className="text-xs text-neutral-500 font-medium">
-                                {fullName ? "Hồ sơ của bạn đã được điền đầy đủ." : "Vui lòng cập nhật đầy đủ họ tên của bạn."}
+                                {(fullName && university && major) ? "Hồ sơ của bạn đã được điền đầy đủ." : "Vui lòng cập nhật đầy đủ họ tên, trường và chuyên ngành của bạn."}
                             </p>
                         </div>
                     </div>

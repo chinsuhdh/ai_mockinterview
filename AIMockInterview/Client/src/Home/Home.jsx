@@ -7,7 +7,7 @@ import {
     ChevronUp, Facebook, Linkedin, Github, X, Mic, Send, Info, LogOut, Sparkles, Menu, Loader2
 } from 'lucide-react';
 import { getSubscriptionPlans } from '../services/paymentService';
-import { sendChatMessage } from '../services/chatbotService';
+import { sendChatbotMessage } from '../services/chatbotService';
 const successCards = [
     { icon: <Trophy size={20} className="text-amber-600" />, text: "Offer Google $3k", sub: "Software Engineer" },
     { icon: <Star size={20} className="text-yellow-500" />, text: "Score: 98/100", sub: "Kỹ năng trả lời" },
@@ -184,7 +184,7 @@ const AIRobotAssistant = () => {
 
         try {
             // Truyền messages TRƯỚC khi thêm userMsg để tránh duplicate turn
-            const reply = await sendChatMessage(messages, userText);
+            const reply = await sendChatbotMessage(userText);
             setMessages(prev => [...prev, { id: Date.now() + 1, text: reply, sender: 'bot' }]);
         } catch (err) {
             console.error('Chatbot error:', err?.response?.data ?? err.message);

@@ -16,5 +16,7 @@ namespace AIMockInterviewer.API.Interfaces
 
         Task<List<InterviewManageResponse>> GetAllInterviewsAsync();
         Task<List<TransactionManageResponse>> GetAllTransactionsAsync();
+
+        Task<List<InterviewMessageResponse>> GetInterviewMessagesAsync(Guid sessionId);
     }
 }

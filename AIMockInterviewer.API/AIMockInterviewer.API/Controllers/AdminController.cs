@@ -105,5 +105,35 @@ namespace AIMockInterviewer.API.Controllers
             var transactions = await _adminService.GetAllTransactionsAsync();
             return Ok(transactions);
         }
+
+        [HttpGet("interviews/{sessionId}/messages")]
+        public async Task<IActionResult> GetInterviewMessages(Guid sessionId)
+        {
+            try
+            {
+                var messages = await _adminService.GetInterviewMessagesAsync(sessionId);
+
+                return Ok(new { Success = true, Data = messages });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { Success = false, Message = $"Lỗi hệ thống: {ex.Message}" });
+            }
+        }
+
+        [HttpGet("visitor-stats")]
+        public IActionResult GetVisitorStats([FromServices] IVisitorTrackingService trackingService)
+        {
+            var currentIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+            var stats = trackingService.GetStats(currentIp);
+            return Ok(new { Success = true, Data = stats });
+        }
+
+        [HttpDelete("visitor-stats/clear")]
+        public IActionResult ClearVisitorStats([FromServices] IVisitorTrackingService trackingService)
+        {
+            trackingService.ClearHistory();
+            return Ok(new { Success = true, Message = "Đã xoá toàn bộ lịch sử truy cập." });
+        }
     }
 }

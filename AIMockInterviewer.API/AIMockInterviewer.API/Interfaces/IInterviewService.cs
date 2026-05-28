@@ -8,5 +8,7 @@ namespace AIMockInterviewer.API.Interfaces
         Task<object> ChatAsync(Guid userId, ChatRequest request);
 
         Task<object> EndSessionAsync(Guid userId, Guid sessionId);
+
+        Task<object> ResumeSessionAsync(Guid userId, Guid sessionId);
     }
 }

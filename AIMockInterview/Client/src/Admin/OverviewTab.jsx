@@ -1,18 +1,25 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Users, Package, TrendingUp, Crown, Activity } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
-    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+    Users, TrendingUp, Crown, Activity, 
+    Server, Calendar, Hash, Globe, MapPin, Clock, History, Trash2, AlignLeft
+} from 'lucide-react';
+import { 
+    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, 
     PieChart, Pie, Cell, Legend 
 } from 'recharts';
-import { getDashboard, getUsers, getTransactions, getInterviews } from '../services/adminService'; 
+import toast from 'react-hot-toast';
+import { 
+    getDashboard, getUsers, getTransactions, getInterviews, 
+    getVisitorStats, clearVisitorStats 
+} from '../services/adminService'; 
 
 const PIE_COLORS = ['#9ca3af', '#f59e0b', '#8b5cf6', '#3b82f6', '#ec4899'];
 
-const StatCard = ({ icon: Icon, title, value, colorClass, iconClass, trend }) => (
+const StatCard = ({ icon: IconComponent, title, value, colorClass, iconClass, trend }) => (
     <div className="bg-white p-6 rounded-2xl border border-neutral-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] flex flex-col gap-2 relative overflow-hidden transition-all hover:shadow-md">
         <div className="flex justify-between items-start mb-2">
             <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${iconClass}`}>
-                <Icon size={24} />
+                <IconComponent size={24} />
             </div>
             {trend && (
                 <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1">
@@ -23,7 +30,7 @@ const StatCard = ({ icon: Icon, title, value, colorClass, iconClass, trend }) =>
         <p className="text-neutral-500 font-bold text-sm uppercase tracking-wider">{title}</p>
         <h3 className="text-3xl font-black text-neutral-900 truncate">{value}</h3>
         <div className={`absolute -right-4 -bottom-4 opacity-[0.03] ${colorClass}`}>
-            <Icon size={120} />
+            <IconComponent size={120} />
         </div>
     </div>
 );
@@ -50,6 +57,117 @@ const CustomTooltip = ({ active, payload, label }) => {
     }
     return null;
 };
+
+// ─── COMPONENT THỐNG KÊ TRUY CẬP (DỮ LIỆU THẬT TỪ BE) ─────────────────────────
+const VisitorStats = () => {
+    const [stats, setStats] = useState(null);
+    const [currentTime, setCurrentTime] = useState(new Date());
+
+    const fetchStats = useCallback(async () => {
+        try {
+            const res = await getVisitorStats();
+            setStats(res.data.data);
+        } catch (error) {
+            console.error("Lỗi lấy thống kê:", error);
+        }
+    }, []);
+
+    useEffect(() => {
+        // Bỏ qua cảnh báo set state của React Hooks
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        fetchStats();
+        
+        // Cập nhật dữ liệu mỗi 5 giây
+        const interval = setInterval(() => {
+            fetchStats();
+            setCurrentTime(new Date());
+        }, 5000);
+        return () => clearInterval(interval);
+    }, [fetchStats]);
+
+    const handleClearHistory = async () => {
+        if(window.confirm("Bạn có chắc muốn xóa toàn bộ dữ liệu thống kê lượt truy cập?")) {
+            try {
+                await clearVisitorStats();
+                toast.success("Đã xóa lịch sử truy cập!");
+                fetchStats();
+            } catch (err) {
+                console.error("Lỗi khi xóa lịch sử truy cập:", err);
+                toast.error("Lỗi khi xóa lịch sử!");
+            }
+        }
+    };
+
+    const formatUptime = (totalSeconds) => {
+        if (!totalSeconds) return "0 giây";
+        const h = Math.floor(totalSeconds / 3600);
+        const m = Math.floor((totalSeconds % 3600) / 60);
+        const s = totalSeconds % 60;
+        return `${h} giờ ${m} phút ${s} giây`;
+    };
+
+    if (!stats) return <div className="p-8 text-center font-bold text-neutral-500">Đang tải thống kê truy cập...</div>;
+
+    return (
+        <div className="bg-white rounded-3xl border border-neutral-200 shadow-sm p-6 md:p-8 mt-6">
+            <h2 className="text-xl font-black text-neutral-900 mb-6 flex items-center justify-center gap-2">
+                <AlignLeft size={24} className="text-neutral-800" /> Thống kê lượt truy cập Server
+            </h2>
+
+            <div className="space-y-4 mb-8 max-w-3xl mx-auto text-sm">
+                <div className="flex justify-between items-center py-3 border-b border-neutral-100">
+                    <span className="flex items-center gap-3 text-neutral-700 font-bold"><Users size={18} className="text-neutral-500" /> Địa chỉ IP của bạn:</span>
+                    <span className="font-black text-blue-600">{stats.currentIp === "::1" || stats.currentIp === "127.0.0.1" ? "127.0.0.1 (Localhost)" : stats.currentIp}</span>
+                </div>
+                <div className="flex justify-between items-center py-3 border-b border-neutral-100">
+                    <span className="flex items-center gap-3 text-neutral-700 font-bold"><Calendar size={18} className="text-neutral-500" /> Số lượt truy cập hôm nay:</span>
+                    <span className="font-black text-green-600">{stats.todayVisits}</span>
+                </div>
+                <div className="flex justify-between items-center py-3 border-b border-neutral-100">
+                    <span className="flex items-center gap-3 text-neutral-700 font-bold"><Hash size={18} className="text-neutral-500" /> Tổng số lượt truy cập:</span>
+                    <span className="font-black text-neutral-900">{stats.totalVisits}</span>
+                </div>
+                <div className="flex justify-between items-center py-3 border-b border-neutral-100">
+                    <span className="flex items-center gap-3 text-neutral-700 font-bold"><Globe size={18} className="text-neutral-500" /> IP hoạt động nhiều nhất:</span>
+                    <span className="font-black text-neutral-900">{stats.topIp === "::1" ? "Localhost" : stats.topIp}</span>
+                </div>
+                <div className="flex justify-between items-center py-3 border-b border-neutral-100">
+                    <span className="flex items-center gap-3 text-neutral-700 font-bold"><MapPin size={18} className="text-neutral-500" /> Khu vực truy cập nhiều nhất:</span>
+                    <span className="font-black text-neutral-900">{stats.topLocation}</span>
+                </div>
+                <div className="flex justify-between items-center py-3 border-b border-neutral-100">
+                    <span className="flex items-center gap-3 text-neutral-700 font-bold"><Clock size={18} className="text-neutral-500" /> Giờ server:</span>
+                    <span className="font-black text-blue-600">{currentTime.toLocaleString('vi-VN')}</span>
+                </div>
+                <div className="flex justify-between items-center py-3 border-b border-neutral-100">
+                    <span className="flex items-center gap-3 text-neutral-700 font-bold"><Server size={18} className="text-neutral-500" /> Uptime:</span>
+                    <span className="font-black text-green-600">{formatUptime(stats.uptimeSeconds)}</span>
+                </div>
+            </div>
+
+            <div className="bg-[#0f172a] rounded-2xl p-5 font-mono text-sm shadow-inner max-w-4xl mx-auto overflow-x-auto">
+                <div className="text-cyan-400 font-bold mb-3">[Recent Visitors Log]</div>
+                <div className="space-y-2">
+                    {stats.recentLogs && stats.recentLogs.length > 0 ? stats.recentLogs.map((log, i) => (
+                        <div key={i} className="text-green-400"><span className="text-emerald-500">{">"}</span> {log}</div>
+                    )) : (
+                        <div className="text-neutral-500 italic">Chưa có log truy cập nào...</div>
+                    )}
+                </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row justify-center gap-4 mt-8">
+                <button onClick={fetchStats} className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl border border-blue-500 text-blue-600 font-bold hover:bg-blue-50 transition-colors">
+                    <History size={18} /> Làm mới dữ liệu
+                </button>
+                <button onClick={handleClearHistory} className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl border border-red-500 text-red-500 font-bold hover:bg-red-50 transition-colors">
+                    <Trash2 size={18} /> Xoá lịch sử truy cập
+                </button>
+            </div>
+        </div>
+    );
+};
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const OverviewTab = () => {
     const [stats, setStats] = useState(null);
@@ -197,7 +315,7 @@ export const OverviewTab = () => {
                                 <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6b7280', fontWeight: 600}} />
                                 <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6b7280', fontWeight: 600}} tickFormatter={v => `${v/1000000}M`} />
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                                <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#f3f4f6', strokeWidth: 2 }} />
+                                <RechartsTooltip content={<CustomTooltip />} cursor={{ stroke: '#f3f4f6', strokeWidth: 2 }} />
                                 
                                 <Area yAxisId="left" type="monotone" dataKey="Hệ thống" name="Lượt phỏng vấn" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorInterviews)" />
                                 <Area yAxisId="right" type="monotone" dataKey="Doanh thu" name="Doanh thu phát sinh" stroke="#22c55e" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
@@ -227,7 +345,7 @@ export const OverviewTab = () => {
                                         <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                                     ))}
                                 </Pie>
-                                <Tooltip 
+                                <RechartsTooltip 
                                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
                                     formatter={(value) => [`${value.toLocaleString()} Users`, 'Số lượng']}
                                 />
@@ -243,8 +361,10 @@ export const OverviewTab = () => {
                         </div>
                     </div>
                 </div>
-
             </div>
+
+            <VisitorStats />
+
         </div>
     );
 };

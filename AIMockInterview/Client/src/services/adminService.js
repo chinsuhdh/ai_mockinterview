@@ -40,3 +40,7 @@ export const getInterviews = () =>
 // ── Transactions ───────────────────────────
 export const getTransactions = () =>
     apiClient.get('/api/Admin/transactions');
+
+
+export const getVisitorStats = () => apiClient.get('/api/Admin/visitor-stats');
+export const clearVisitorStats = () => apiClient.delete('/api/Admin/visitor-stats/clear');

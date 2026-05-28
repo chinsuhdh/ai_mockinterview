@@ -40,16 +40,18 @@ namespace AIMockInterviewer.API.Services
             return await CallGeminiApi(url, fullPrompt);
         }
 
-        public async Task<string> AnalyzeJdAndCreateQuestions(string jobDescription)
+        // Đổi tên tham số từ jobDescription thành contextData
+        public async Task<string> AnalyzeJdAndCreateQuestions(string contextData)
         {
             var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={_apiKey}";
 
+            // Sửa lại prompt một chút để phù hợp với cả 2 trường hợp
             string prompt = $@"
-                Act as a Senior Recruiter. Analyze this JD: '{jobDescription}'.
-                Task: Create exactly 8 to 10 interview questions.
+                Act as a Senior Recruiter. Analyze the following context (JD and/or CV): '{contextData}'.
+                Task: Create exactly 8 to 10 interview questions based strictly on the provided context.
                 - 2 Ice-breaking
                 - 3 Behavioral
-                - 3-5 Technical specific to JD
+                - 3-5 Technical or Experience-based questions specific to the provided text.
                 
                 *** OUTPUT FORMAT (STRICT JSON ARRAY) ***:
                 [
@@ -117,6 +119,21 @@ namespace AIMockInterviewer.API.Services
             string fullPrompt = $"{systemInstruction}\n\n[Interview Transcript]:\n{context}\n\n[HR Evaluation (JSON)]:";
 
             return await CallGeminiApi(url, fullPrompt);
+        }
+
+        public async Task<string> GetGeneralChatResponse(string userMessage)
+        {
+            var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={_apiKey}";
+
+            string prompt = $@"
+                Bạn là trợ lý ảo AI của hệ thống Mock Interview. Hãy trả lời ngắn gọn, thân thiện, và hữu ích cho câu hỏi sau: '{userMessage}'
+                
+                *** OUTPUT FORMAT (JSON ONLY) ***:
+                {{
+                    ""reply"": ""(Tiếng Việt) Câu trả lời của bạn...""
+                }}";
+
+            return await CallGeminiApi(url, prompt);
         }
     }
 }

@@ -67,3 +67,10 @@ export const getHint = (data) =>
  */
 export const endInterview = (sessionId) =>
     apiClient.post(`/api/Interview/${sessionId}/end`);
+
+/**
+ * Tiếp tục phiên phỏng vấn đang dang dở (In-Progress)
+ * @param {string} sessionId
+ */
+export const resumeInterview = (sessionId) =>
+    apiClient.get(`/api/Interview/${sessionId}/resume`);

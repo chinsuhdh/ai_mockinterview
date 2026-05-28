@@ -202,5 +202,20 @@ namespace AIMockInterviewer.API.Services
                 .OrderByDescending(t => t.CreatedAt)
                 .ToListAsync();
         }
+
+        public async Task<List<InterviewMessageResponse>> GetInterviewMessagesAsync(Guid sessionId)
+        {
+            return await _context.InterviewMessages
+                .Where(m => m.InterviewSessionId == sessionId)
+                .OrderBy(m => m.CreatedAt)
+                .Select(m => new InterviewMessageResponse
+                {
+                    Id = m.Id,
+                    SenderRole = m.SenderRole, 
+                    MessageContent = m.MessageContent,
+                    CreatedAt = m.CreatedAt
+                })
+                .ToListAsync();
+        }
     }
 }

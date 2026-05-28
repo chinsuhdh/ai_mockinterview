@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Ban, PlayCircle, Eye, Save, PlusCircle, Key, Star, ShieldAlert, ArrowDownToLine, Users, Edit, Trash2 } from 'lucide-react';
+import { 
+    Search, Ban, PlayCircle, Save, PlusCircle, Key, ArrowDownToLine, 
+    Trash2, X, Loader2, Bot, User, MessageSquare 
+} from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import toast from 'react-hot-toast'; 
+import apiClient from '../api'; // Thêm import apiClient để gọi API Chat
 import {
     getUsers,
     toggleUserStatus,
@@ -127,6 +131,9 @@ export const InterviewsTab = () => {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
 
+    // State dùng để mở Pop-up xem Chat Log
+    const [chatModal, setChatModal] = useState({ isOpen: false, data: [], loading: false, title: '' });
+
     const fetchInterviews = async () => {
         try {
             setLoading(true);
@@ -143,6 +150,19 @@ export const InterviewsTab = () => {
     useEffect(() => {
         fetchInterviews();
     }, []);
+
+    // Hàm gọi API lấy đoạn hội thoại
+    const handleViewChat = async (sessionId, jobTitle, userFullName) => {
+        setChatModal({ isOpen: true, data: [], loading: true, title: `${userFullName} - ${jobTitle}` });
+        try {
+            const res = await apiClient.get(`/api/Admin/interviews/${sessionId}/messages`);
+            setChatModal(prev => ({ ...prev, data: res.data.data || [], loading: false }));
+        } catch (err) {
+            console.error("Lỗi lấy Chat Log:", err);
+            toast.error("Lỗi tải lịch sử hội thoại!");
+            setChatModal({ isOpen: false, data: [], loading: false, title: '' });
+        }
+    };
 
     const filteredInterviews = interviews.filter(i => 
         i.userFullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -198,7 +218,11 @@ export const InterviewsTab = () => {
                                             )}
                                         </td>
                                         <td className="p-5 text-right">
-                                            <button onClick={() => toast.success(`Đang tải log chi tiết của phiên ${i.id}...`)} className="inline-flex items-center gap-2 px-4 py-2.5 bg-neutral-100 text-neutral-700 rounded-xl hover:bg-neutral-200 font-bold text-xs transition-colors">
+                                            {/* Sửa lại OnClick ở đây */}
+                                            <button 
+                                                onClick={() => handleViewChat(i.id, i.jobTitle, i.userFullName)} 
+                                                className="inline-flex items-center gap-2 px-4 py-2.5 bg-neutral-100 text-neutral-700 rounded-xl hover:bg-neutral-200 font-bold text-xs transition-colors"
+                                            >
                                                 <PlayCircle size={14} /> Xem hội thoại
                                             </button>
                                         </td>
@@ -209,6 +233,88 @@ export const InterviewsTab = () => {
                     </table>
                 </div>
             </div>
+
+            {/* Modal hiển thị chi tiết cuộc trò chuyện */}
+            {chatModal.isOpen && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm">
+                    <div className="bg-white w-full max-w-4xl rounded-[2rem] shadow-2xl flex flex-col h-[85vh] overflow-hidden">
+                        <div className="flex justify-between items-center p-6 border-b border-neutral-100 bg-[#FAFAFA] shrink-0">
+                            <div>
+                                <h3 className="text-xl font-black text-neutral-900">Chi tiết hội thoại</h3>
+                                <p className="text-sm font-medium text-neutral-500 mt-1">Phiên: {chatModal.title}</p>
+                            </div>
+                            <button 
+                                onClick={() => setChatModal({ isOpen: false, data: [], loading: false, title: '' })} 
+                                className="p-2 bg-white rounded-full border border-neutral-200 hover:bg-neutral-100 hover:text-red-500 transition-colors"
+                            >
+                                <X size={20} className="text-neutral-500 hover:text-red-500" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 bg-neutral-50 space-y-5 custom-scrollbar">
+                            {chatModal.loading ? (
+                                <div className="flex justify-center items-center h-full">
+                                    <Loader2 size={40} className="animate-spin text-amber-500" />
+                                </div>
+                            ) : chatModal.data.length === 0 ? (
+                                <div className="text-center text-neutral-400 py-20">
+                                    <MessageSquare size={64} className="mx-auto mb-4 opacity-20" />
+                                    <p className="font-bold text-lg">Không có tin nhắn nào trong phiên này.</p>
+                                    <p className="text-sm">Ứng viên chưa bắt đầu trò chuyện hoặc phiên bị lỗi.</p>
+                                </div>
+                            ) : (
+                                chatModal.data.map((msg, idx) => {
+                                    const isUser = msg.senderRole === 'User';
+                                    const isSystem = msg.senderRole === 'System';
+
+                                    // Tin nhắn của Hệ thống (JD, CV) -> Rút gọn lại để không chiếm màn hình
+                                    if (isSystem) {
+                                        return (
+                                            <div key={idx} className="flex justify-center my-4">
+                                                <div 
+                                                    className="bg-neutral-200/50 text-neutral-500 text-[11px] font-bold px-5 py-2.5 rounded-full max-w-[85%] text-center line-clamp-2 hover:line-clamp-none cursor-pointer transition-all border border-neutral-200" 
+                                                    title="Click để xem toàn bộ nội dung"
+                                                >
+                                                    <span className="uppercase tracking-widest text-neutral-400 mr-2">[System Data]</span> 
+                                                    {msg.messageContent}
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+
+                                    // Tin nhắn của User hoặc AI
+                                    return (
+                                        <div key={idx} className={`flex gap-3 items-end ${isUser ? 'justify-end' : 'justify-start'}`}>
+                                            {!isUser && (
+                                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shrink-0 shadow-sm">
+                                                    <Bot size={16} className="text-white" />
+                                                </div>
+                                            )}
+                                            
+                                            <div className={`max-w-[75%] px-5 py-3.5 rounded-2xl text-sm leading-relaxed shadow-sm whitespace-pre-wrap ${
+                                                isUser 
+                                                    ? 'bg-neutral-900 text-white rounded-br-none' 
+                                                    : 'bg-white border border-neutral-200 text-neutral-800 rounded-bl-none'
+                                            }`}>
+                                                {msg.messageContent}
+                                                <div className={`text-[10px] mt-2 opacity-50 font-bold ${isUser ? 'text-right' : 'text-left'}`}>
+                                                    {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute:'2-digit', second:'2-digit' }) : ''}
+                                                </div>
+                                            </div>
+
+                                            {isUser && (
+                                                <div className="w-8 h-8 rounded-full bg-neutral-200 border border-neutral-300 flex items-center justify-center shrink-0 shadow-sm">
+                                                    <User size={16} className="text-neutral-600" />
+                                                </div>
+                                            )}
+                                        </div>
+                                    )
+                                })
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -367,7 +473,7 @@ export const SettingsTab = () => {
         <div className="space-y-6 animate-in fade-in duration-500">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                 <div className="bg-white p-8 rounded-2xl border border-neutral-100 shadow-sm space-y-6">
-                    <h3 className="text-xl font-black text-neutral-900 border-b border-neutral-100 pb-4">Thông tin Website</h3>
+                    <h3 className="text-xl font-black text-neutral-900 border-b border-neutral-100 pb-4">Thông定 Website</h3>
                     <div>
                         <label className="block text-base font-bold text-neutral-900 mb-2">Tên Website</label>
                         <input type="text" defaultValue="AIMockInterview" className="w-full px-5 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl font-medium focus:outline-none focus:border-amber-500" />

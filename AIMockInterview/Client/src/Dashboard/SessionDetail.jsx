@@ -389,12 +389,15 @@ export default function SessionDetail() {
 
                 {/* ── CTA ── */}
                 <div className="flex gap-3 pb-6 animate-fade-in-up">
-                    <button
-                        onClick={() => navigate('/interview')}
-                        className="flex-1 py-3.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-2xl font-black text-sm shadow-md hover:opacity-90 transition-all"
-                    >
-                        Luyện tập tiếp →
-                    </button>
+                    {/* Chỉ hiện nút Luyện tập tiếp nếu trạng thái là In-Progress */}
+                    {session.status === 'In-Progress' && (
+                        <button
+                            onClick={() => navigate(`/interview?sessionId=${sessionId}`)}
+                            className="flex-1 py-3.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-2xl font-black text-sm shadow-md hover:opacity-90 transition-all"
+                        >
+                            Luyện tập tiếp →
+                        </button>
+                    )}
                     <button
                         onClick={() => navigate('/dashboard')}
                         className="px-6 py-3.5 bg-white border border-neutral-200 rounded-2xl font-bold text-sm text-neutral-700 hover:bg-neutral-50 transition-colors shadow-sm"
