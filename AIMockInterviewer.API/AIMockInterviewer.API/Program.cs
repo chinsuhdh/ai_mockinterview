@@ -2,6 +2,7 @@
 using AIMockInterviewer.API.Models;
 using AIMockInterviewer.API.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides; 
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Security.Claims;
@@ -93,7 +94,19 @@ namespace AIMockInterviewer.API
                 });
             });
 
+            // [THÊM MỚI] Cấu hình Forwarded Headers để lấy IP thật từ Proxy của Render
+            builder.Services.Configure<ForwardedHeadersOptions>(options =>
+            {
+                options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+                // Clear KnownNetworks/KnownProxies để chấp nhận IP từ Load Balancer của Render
+                options.KnownNetworks.Clear();
+                options.KnownProxies.Clear();
+            });
+
             var app = builder.Build();
+
+            // [THÊM MỚI] Gọi UseForwardedHeaders đầu tiên trong Pipeline
+            app.UseForwardedHeaders();
 
             if (app.Environment.IsDevelopment())
             {
@@ -102,7 +115,10 @@ namespace AIMockInterviewer.API
             }
 
             app.UseRouting();
+
+            // VisitorTrackingMiddleware giờ đã có thể lấy đúng IP vì nó chạy sau UseForwardedHeaders
             app.UseMiddleware<AIMockInterviewer.API.Middlewares.VisitorTrackingMiddleware>();
+
             app.UseCors("AllowAll");
 
             app.UseHttpsRedirection();
