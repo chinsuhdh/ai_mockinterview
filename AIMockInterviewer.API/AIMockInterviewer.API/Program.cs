@@ -116,9 +116,6 @@ namespace AIMockInterviewer.API
 
             app.UseRouting();
 
-            // VisitorTrackingMiddleware giờ đã có thể lấy đúng IP vì nó chạy sau UseForwardedHeaders
-            app.UseMiddleware<AIMockInterviewer.API.Middlewares.VisitorTrackingMiddleware>();
-
             app.UseCors("AllowAll");
 
             app.UseHttpsRedirection();

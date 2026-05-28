@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { getSubscriptionPlans } from '../services/paymentService';
 import { sendChatbotMessage } from '../services/chatbotService';
+
 const successCards = [
     { icon: <Trophy size={20} className="text-amber-600" />, text: "Offer Google $3k", sub: "Software Engineer" },
     { icon: <Star size={20} className="text-yellow-500" />, text: "Score: 98/100", sub: "Kỹ năng trả lời" },
@@ -58,16 +59,6 @@ const SECTION_MESSAGES = {
     faq: "Cần mình giải thích thêm chỗ nào không? 🤔",
     cta: "Sẵn sàng đăng ký chưa nè? Mình giúp luôn 😁"
 };
-
-const BOT_RESPONSES = [
-    "Haha, câu này khó nha! Để mình suy nghĩ chút... 🤖",
-    "Bạn cứ thoải mái chia sẻ, mình đang lắng nghe đây! 👂",
-    "Đừng lo, mình ở đây để giúp bạn tự tự tin hơn mà! 💪",
-    "Mình đang học cách nói chuyện như người thật đó nha, thấy ghê chưa? 😆",
-    "Bạn có muốn mình test thử một câu hỏi phỏng vấn hóc búa không? 😈",
-    "Chà, profile của bạn có vẻ xịn đó! Tiếp tục phát huy nhé! 🌟",
-    "Cứ bình tĩnh, hít thở sâu và trả lời thật tự nhiên nhé! 🍃"
-];
 
 const FadeIn = ({ children, delay = 0, className = "" }) => (
     <motion.div
@@ -183,7 +174,6 @@ const AIRobotAssistant = () => {
         setIsTyping(true);
 
         try {
-            // Truyền messages TRƯỚC khi thêm userMsg để tránh duplicate turn
             const reply = await sendChatbotMessage(userText);
             setMessages(prev => [...prev, { id: Date.now() + 1, text: reply, sender: 'bot' }]);
         } catch (err) {
@@ -261,6 +251,21 @@ export default function Home() {
     const [pricingPlans, setPricingPlans] = useState([]);
     const [loadingPlans, setLoadingPlans] = useState(true);
 
+    // [THÊM MỚI] - Gọi API ghi nhận lượt truy cập khi khách vãng lai vừa vào trang Home
+    useEffect(() => {
+        const recordVisit = async () => {
+            try {
+                await fetch('https://ai-mockinterview.onrender.com/api/tracking/record', {
+                    method: 'POST'
+                });
+            } catch (error) {
+                console.error("Lỗi khi ghi nhận truy cập từ Frontend:", error);
+            }
+        };
+
+        recordVisit();
+    }, []);
+
     useEffect(() => {
         const fetchPlans = async () => {
             try {
@@ -305,13 +310,11 @@ export default function Home() {
     };
 
     const handleSelectPlan = (plan) => {
-        // Gói miễn phí → vào thẳng phòng phỏng vấn
         const isFree = plan.price === '0đ' || plan.price === 0 || plan.name.toLowerCase().includes('free');
         if (isFree) {
             navigate(user ? '/interview' : '/auth');
             return;
         }
-        // Gói trả phí → cần đăng nhập
         if (!user) {
             navigate('/auth');
             return;

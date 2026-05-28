@@ -18,7 +18,16 @@ namespace AIMockInterviewer.API.Services
 
         public async Task RecordVisitAsync(string ipAddress)
         {
-            if (string.IsNullOrEmpty(ipAddress)) return;
+            if (string.IsNullOrEmpty(ipAddress) || ipAddress == "Unknown") return;
+
+            if (ipAddress == "::1" ||
+                ipAddress == "127.0.0.1" ||
+                ipAddress.StartsWith("10.") ||
+                ipAddress.StartsWith("172.") ||
+                ipAddress.StartsWith("192.168."))
+            {
+                return;
+            }
 
             var lastVisit = _logs.LastOrDefault(x => x.IpAddress == ipAddress);
             if (lastVisit != null && (DateTime.UtcNow - lastVisit.Timestamp).TotalSeconds < 10)
@@ -26,36 +35,28 @@ namespace AIMockInterviewer.API.Services
 
             string location = "Unknown";
 
-            
-            if (ipAddress == "::1" || ipAddress == "127.0.0.1")
+            try
             {
-                location = "Localhost";
-            }
-            else
-            {
-                try
+                var client = _httpClientFactory.CreateClient();
+                var response = await client.GetAsync($"https://ipinfo.io/{ipAddress}/json");
+
+                if (response.IsSuccessStatusCode)
                 {
-                    
-                    var client = _httpClientFactory.CreateClient();
-                    var response = await client.GetAsync($"http://ip-api.com/json/{ipAddress}");
+                    var jsonString = await response.Content.ReadAsStringAsync();
+                    using var doc = JsonDocument.Parse(jsonString);
 
-                    if (response.IsSuccessStatusCode)
+                    string city = doc.RootElement.TryGetProperty("city", out var cityElement) ? cityElement.GetString() : "";
+                    string country = doc.RootElement.TryGetProperty("country", out var countryElement) ? countryElement.GetString() : "";
+
+                    if (!string.IsNullOrEmpty(city) && !string.IsNullOrEmpty(country))
                     {
-                        var jsonString = await response.Content.ReadAsStringAsync();
-                        using var doc = JsonDocument.Parse(jsonString);
-
-                        if (doc.RootElement.GetProperty("status").GetString() == "success")
-                        {
-                            var city = doc.RootElement.GetProperty("city").GetString();
-                            var country = doc.RootElement.GetProperty("country").GetString();
-                            location = $"{city}, {country}";
-                        }
+                        location = $"{city}, {country}";
                     }
                 }
-                catch
-                {
-                    
-                }
+            }
+            catch
+            {
+                location = "Unknown";
             }
 
             _logs.Enqueue(new VisitorLog { IpAddress = ipAddress, Timestamp = DateTime.UtcNow, Location = location });
@@ -87,7 +88,7 @@ namespace AIMockInterviewer.API.Services
                 TodayVisits = todayVisits,
                 TotalVisits = _totalVisits,
                 TopIp = topIp,
-                TopLocation = topLocation, 
+                TopLocation = topLocation,
                 ServerTime = DateTime.UtcNow.ToLocalTime(),
                 UptimeSeconds = Environment.TickCount64 / 1000,
                 RecentLogs = recent
