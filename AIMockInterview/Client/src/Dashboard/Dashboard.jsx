@@ -45,7 +45,7 @@ export default function Dashboard() {
                     setUserName(profileData.fullName || profileData.FullName || 'Bạn');
                     
                     // Kiểm tra planName từ database nếu role chỉ là user chung chung
-                    const apiRole = profileData.role || profileData.Role || profileData.planName || 'user';
+                    const apiRole = profileData.currentPlan || profileData.CurrentPlan || profileData.role || 'free';
                     setUserRole(apiRole.toLowerCase());
                 }
 

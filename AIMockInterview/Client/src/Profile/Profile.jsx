@@ -51,7 +51,7 @@ export default function Profile() {
                     setMajor(profileData.major || profileData.Major || '');
                     
                     // FIX: Lấy Role/Plan mới nhất từ DB
-                    const apiRole = profileData.role || profileData.Role || profileData.planName || 'free';
+                    const apiRole = profileData.currentPlan || profileData.CurrentPlan || profileData.role || 'free';;
                     setUserRole(apiRole);
                     // Cập nhật luôn lại localStorage để đồng bộ với các trang khác
                     localStorage.setItem('role', apiRole.toLowerCase());
