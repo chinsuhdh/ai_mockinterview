@@ -30,8 +30,9 @@ namespace AIMockInterviewer.API.Controllers
                 var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 var userId = Guid.Parse(userIdStr!);
 
-                // Truyền thêm request.ReturnUrl xuống Service
-                string checkoutUrl = await _paymentService.CreatePaymentLinkAsync(userId, request.PlanId, request.ReturnUrl);
+                // Truyền cả ReturnUrl và CancelUrl xuống Service
+                string checkoutUrl = await _paymentService.CreatePaymentLinkAsync(userId, request.PlanId, request.ReturnUrl, request.CancelUrl);
+
                 return Ok(new { Success = true, CheckoutUrl = checkoutUrl });
             }
             catch (Exception ex)

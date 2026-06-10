@@ -9,22 +9,24 @@ import Payment from './Payment/Payment';
 import ChangePassword from './Profile/ChangePassword';
 import SessionDetail from './Dashboard/SessionDetail';
 
+// --- IMPORT 2 TRANG MỚI THÊM VÀO ---
+import PaymentSuccess from './Payment/PaymentSuccess';
+import PaymentCancel from './Payment/PaymentCancel';
+
 // --- IMPORT COMPONENT ADMIN ---
 import AdminDashboard from './Admin/AdminDashboard';
 
-// ĐÃ FIX: Trả lại đúng chuẩn kiểm tra của bạn
 const PrivateRoute = ({ children }) => {
     const isLoggedIn = localStorage.getItem('token') || localStorage.getItem('fullName');
     return isLoggedIn ? children : <Navigate to="/auth" />;
 };
 
-// --- ROUTE BẢO VỆ RIÊNG CHO ADMIN ---
 const AdminRoute = ({ children }) => {
     const isLoggedIn = localStorage.getItem('token') || localStorage.getItem('fullName');
-    const role = localStorage.getItem('role'); // Kiểm tra role
+    const role = localStorage.getItem('role');
     
     if (!isLoggedIn) return <Navigate to="/auth" />;
-    if (role !== 'admin') return <Navigate to="/" />; // Không phải admin thì đuổi về Home
+    if (role !== 'admin') return <Navigate to="/" />; 
     
     return children;
 };
@@ -40,9 +42,11 @@ function App() {
                 <Route path="/interview" element={<PrivateRoute><Interview /></PrivateRoute>} />
                 <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
                 <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
-                
-                {/* TRANG PAYMENT NẰM AN TOÀN Ở ĐÂY */}
                 <Route path="/payment" element={<PrivateRoute><Payment /></PrivateRoute>} />
+                
+                {/* --- 2 ROUTE XỬ LÝ KẾT QUẢ PAYOS --- */}
+                <Route path="/payment-success" element={<PrivateRoute><PaymentSuccess /></PrivateRoute>} />
+                <Route path="/payment-cancel" element={<PrivateRoute><PaymentCancel /></PrivateRoute>} />
                 
                 <Route path="/change-password" element={<PrivateRoute><ChangePassword /></PrivateRoute>} />
                 <Route path="/dashboard/session/:sessionId" element={<PrivateRoute><SessionDetail /></PrivateRoute>} />

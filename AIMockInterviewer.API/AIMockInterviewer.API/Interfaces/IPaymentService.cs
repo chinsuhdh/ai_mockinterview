@@ -5,8 +5,8 @@ namespace AIMockInterviewer.API.Interfaces
 {
     public interface IPaymentService
     {
-        // Thêm string? returnUrl vào signature
-        Task<string> CreatePaymentLinkAsync(Guid userId, Guid planId, string? returnUrl);
+        // Thêm tham số cancelUrl
+        Task<string> CreatePaymentLinkAsync(Guid userId, Guid planId, string? returnUrl, string? cancelUrl);
         Task<bool> HandleWebhookAsync(Webhook webhookBody);
         Task<List<SubscriptionPlanDto>> GetSubscriptionPlansAsync();
     }

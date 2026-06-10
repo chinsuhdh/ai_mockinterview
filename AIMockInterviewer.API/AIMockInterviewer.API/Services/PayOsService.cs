@@ -29,7 +29,7 @@ namespace AIMockInterviewer.API.Services
             );
         }
 
-        public async Task<string> CreatePaymentLinkAsync(Guid userId, Guid planId, string? returnUrl)
+        public async Task<string> CreatePaymentLinkAsync(Guid userId, Guid planId, string? returnUrl, string? cancelUrl)
         {
             var user = await _context.Users.FindAsync(userId) ?? throw new Exception("User không tồn tại.");
             var selectedPlan = await _context.SubscriptionPlans.FindAsync(planId)
@@ -37,7 +37,6 @@ namespace AIMockInterviewer.API.Services
 
             long orderCode = long.Parse(DateTimeOffset.Now.ToString("yyMMddHHmmssfff"));
 
-            // Khởi tạo Transaction...
             var transaction = new Transaction
             {
                 UserId = userId,
@@ -52,16 +51,13 @@ namespace AIMockInterviewer.API.Services
             _context.Transactions.Add(transaction);
             await _context.SaveChangesAsync();
 
-            // XỬ LÝ URL ĐỘNG:
-            // Lấy URL thành công từ Frontend, nếu null thì lấy từ appsettings
+            // LOGIC MỚI ƯU TIÊN FRONTEND TRUYỀN XUỐNG
             string finalReturnUrl = !string.IsNullOrEmpty(returnUrl)
                 ? returnUrl
                 : _config["PayOS:ReturnUrl"]!;
 
-            // Đối với CancelUrl, ta có thể linh hoạt thay đuôi của returnUrl 
-            // (từ /dashboard thành /payment-cancel) hoặc lấy từ appsettings
-            string finalCancelUrl = !string.IsNullOrEmpty(returnUrl)
-                ? returnUrl.Replace("/dashboard", "/payment-cancel")
+            string finalCancelUrl = !string.IsNullOrEmpty(cancelUrl)
+                ? cancelUrl
                 : _config["PayOS:CancelUrl"]!;
 
             var paymentRequest = new CreatePaymentLinkRequest
@@ -69,8 +65,8 @@ namespace AIMockInterviewer.API.Services
                 OrderCode = orderCode,
                 Amount = (int)selectedPlan.Price,
                 Description = $"Nang cap {selectedPlan.PlanName}",
-                CancelUrl = finalCancelUrl, // Sử dụng URL đã xử lý
-                ReturnUrl = finalReturnUrl  // Sử dụng URL đã xử lý
+                CancelUrl = finalCancelUrl,
+                ReturnUrl = finalReturnUrl
             };
 
             var paymentLink = await _payOs.PaymentRequests.CreateAsync(paymentRequest);

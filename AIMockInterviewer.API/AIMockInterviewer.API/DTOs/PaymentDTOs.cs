@@ -15,5 +15,7 @@
     {
         public Guid PlanId { get; set; }
         public string? ReturnUrl { get; set; }
+
+        public string? CancelUrl { get; set; }
     }
 }
