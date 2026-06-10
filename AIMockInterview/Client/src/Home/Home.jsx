@@ -251,7 +251,6 @@ export default function Home() {
     const [pricingPlans, setPricingPlans] = useState([]);
     const [loadingPlans, setLoadingPlans] = useState(true);
 
-    // [THÊM MỚI] - Gọi API ghi nhận lượt truy cập khi khách vãng lai vừa vào trang Home
     useEffect(() => {
         const recordVisit = async () => {
             try {
@@ -309,18 +308,26 @@ export default function Home() {
         navigate('/auth');
     };
 
+    // ĐÃ FIX: Kiểm tra đăng nhập bằng cả token hoặc fullName (Bảo vệ đồng bộ với App.jsx)
     const handleSelectPlan = (plan) => {
+        const isLoggedIn = user || localStorage.getItem('token') || localStorage.getItem('fullName');
         const isFree = plan.price === '0đ' || plan.price === 0 || plan.name.toLowerCase().includes('free');
+        
         if (isFree) {
-            navigate(user ? '/interview' : '/auth');
+            navigate(isLoggedIn ? '/interview' : '/auth');
             return;
         }
-        if (!user) {
+        
+        if (!isLoggedIn) {
             navigate('/auth');
             return;
         }
+        
         navigate('/payment', { state: { selectedPlan: plan } });
     };
+
+    // Biến phụ trợ giúp giao diện gọn gàng hơn
+    const isAuthenticated = user || localStorage.getItem('token') || localStorage.getItem('fullName');
 
     return (
         <div className="font-sans text-neutral-900 bg-white selection:bg-amber-100 selection:text-amber-900 overflow-x-hidden">
@@ -375,10 +382,10 @@ export default function Home() {
                                     </a>
                                 ))}
                                 <div className="h-px bg-neutral-100 my-2" />
-                                {user ? (
+                                {isAuthenticated ? (
                                     <div className="flex flex-col gap-4">
                                         <button onClick={() => { setIsMobileMenuOpen(false); navigate('/profile'); }} className="flex items-center gap-3 text-neutral-700 font-bold hover:text-amber-600 p-2 rounded-xl hover:bg-neutral-50 transition-colors">
-                                            <div className="w-10 h-10 bg-amber-200 text-amber-700 rounded-full flex items-center justify-center text-sm">{user.charAt(0).toUpperCase()}</div>
+                                            <div className="w-10 h-10 bg-amber-200 text-amber-700 rounded-full flex items-center justify-center text-sm">{user ? user.charAt(0).toUpperCase() : 'U'}</div>
                                             Hồ sơ của bạn
                                         </button>
                                         <button onClick={() => { setIsMobileMenuOpen(false); navigate('/dashboard'); }} className="w-full py-3 bg-neutral-900 text-white rounded-xl font-bold hover:bg-black transition-colors">Dashboard</button>
@@ -410,16 +417,16 @@ export default function Home() {
                     </div>
                     
                     <div className="flex items-center gap-2">
-                        {user ? (
+                        {isAuthenticated ? (
                             <div className="hidden lg:flex items-center gap-3 sm:gap-4">
                                 <button 
                                     onClick={() => navigate('/profile')}
                                     className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 rounded-full transition-colors"
                                 >
                                     <div className="w-6 h-6 bg-amber-200 text-amber-700 font-bold rounded-full flex items-center justify-center text-xs">
-                                        {user.charAt(0).toUpperCase()}
+                                        {user ? user.charAt(0).toUpperCase() : 'U'}
                                     </div>
-                                    <span className="text-sm font-bold text-neutral-700">{user}</span>
+                                    <span className="text-sm font-bold text-neutral-700">{user || 'User'}</span>
                                 </button>
                                 <button 
                                     onClick={() => navigate('/dashboard')} 
@@ -480,8 +487,8 @@ export default function Home() {
                         </FadeIn>
                         <FadeIn delay={0.5}>
                             <div className="flex flex-col sm:flex-row gap-5 justify-center lg:justify-start items-center">
-                                <button onClick={() => navigate(user ? '/interview' : '/auth')} className="w-full sm:w-auto px-10 py-5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-2xl font-bold text-xl shadow-xl flex items-center justify-center gap-3 transform hover:scale-105 transition-transform">
-                                    <Mic size={24} /> {user ? 'Tiếp tục luyện tập' : 'Thử phỏng vấn ngay'}
+                                <button onClick={() => navigate(isAuthenticated ? '/interview' : '/auth')} className="w-full sm:w-auto px-10 py-5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-2xl font-bold text-xl shadow-xl flex items-center justify-center gap-3 transform hover:scale-105 transition-transform">
+                                    <Mic size={24} /> {isAuthenticated ? 'Tiếp tục luyện tập' : 'Thử phỏng vấn ngay'}
                                 </button>
                                 <button className="w-full sm:w-auto px-10 py-5 bg-white/80 text-neutral-900 border-2 border-neutral-100 rounded-2xl font-bold text-xl hover:border-amber-400 hover:bg-neutral-50 transition-all flex items-center justify-center gap-2 shadow-sm backdrop-blur-sm">
                                     <Play size={20} fill="currentColor" /> Xem Demo

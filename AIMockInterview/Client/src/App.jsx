@@ -12,6 +12,7 @@ import SessionDetail from './Dashboard/SessionDetail';
 // --- IMPORT COMPONENT ADMIN ---
 import AdminDashboard from './Admin/AdminDashboard';
 
+// ĐÃ FIX: Trả lại đúng chuẩn kiểm tra của bạn
 const PrivateRoute = ({ children }) => {
     const isLoggedIn = localStorage.getItem('token') || localStorage.getItem('fullName');
     return isLoggedIn ? children : <Navigate to="/auth" />;
@@ -19,7 +20,7 @@ const PrivateRoute = ({ children }) => {
 
 // --- ROUTE BẢO VỆ RIÊNG CHO ADMIN ---
 const AdminRoute = ({ children }) => {
-    const isLoggedIn = localStorage.getItem('token');
+    const isLoggedIn = localStorage.getItem('token') || localStorage.getItem('fullName');
     const role = localStorage.getItem('role'); // Kiểm tra role
     
     if (!isLoggedIn) return <Navigate to="/auth" />;
@@ -39,7 +40,10 @@ function App() {
                 <Route path="/interview" element={<PrivateRoute><Interview /></PrivateRoute>} />
                 <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
                 <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
+                
+                {/* TRANG PAYMENT NẰM AN TOÀN Ở ĐÂY */}
                 <Route path="/payment" element={<PrivateRoute><Payment /></PrivateRoute>} />
+                
                 <Route path="/change-password" element={<PrivateRoute><ChangePassword /></PrivateRoute>} />
                 <Route path="/dashboard/session/:sessionId" element={<PrivateRoute><SessionDetail /></PrivateRoute>} />
 

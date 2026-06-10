@@ -234,7 +234,7 @@ export default function Dashboard() {
                                         <p className="font-bold text-sm">Cần hoàn thành ít nhất 1 bài phỏng vấn để vẽ biểu đồ.</p>
                                     </div>
                                 ) : viewMode === 'line' ? (
-                                    <ResponsiveContainer width="100%" height="100%">
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                                         <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F5F5F5" />
                                             <XAxis 
@@ -285,7 +285,7 @@ export default function Dashboard() {
                                         </LineChart>
                                     </ResponsiveContainer>
                                 ) : (
-                                    <ResponsiveContainer width="100%" height="100%">
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                                         <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
                                             <PolarGrid stroke="#E5E5E5" />
                                             <PolarAngleAxis dataKey="subject" tick={{ fill: '#525252', fontSize: 13, fontWeight: 700 }} />
