@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
     User, Mail, Crown, LogOut, ArrowLeft, CheckCircle2, ShieldCheck, 
     Camera, Settings, Bell, Lock, Trophy, Target, Globe, ChevronRight, 
-    Loader2, AlertCircle, GraduationCap, BookOpen // Thêm 2 icon mới cho trường và ngành
+    Loader2, AlertCircle, GraduationCap, BookOpen 
 } from 'lucide-react';
 import { getProfile, updateProfile } from '../services/userService';
 import { getSubscriptionPlans } from '../services/paymentService';
@@ -14,8 +14,11 @@ export default function Profile() {
     // --- Các States quản lý dữ liệu và UI ---
     const [fullName, setFullName] = useState('');
     const [email, setEmail] = useState('');
-    const [university, setUniversity] = useState(''); // Thêm state University
-    const [major, setMajor] = useState('');           // Thêm state Major
+    const [university, setUniversity] = useState(''); 
+    const [major, setMajor] = useState(''); 
+    
+    // Đã FIX: Chuyển role thành state để tự động cập nhật khi API trả về
+    const [userRole, setUserRole] = useState(localStorage.getItem('role') || 'free'); 
     
     const [stats, setStats] = useState({ totalInterviews: 0, avgScore: 0, rank: '-' });
     const [loading, setLoading] = useState(true);
@@ -27,9 +30,9 @@ export default function Profile() {
     const [loadingPlans, setLoadingPlans] = useState(true);
     const [showPlanModal, setShowPlanModal] = useState(false);
 
-    // Xác định gói hiện tại từ localStorage
-    const currentRole = (localStorage.getItem('role') || 'free').toLowerCase();
-    const isPaidUser = currentRole === 'premium' || currentRole === 'pro';
+    // --- Biến kiểm tra trả phí dựa trên State ---
+    const currentRoleLower = userRole.toLowerCase();
+    const isPaidUser = ['basic', 'premium', 'pro', 'ultra'].includes(currentRoleLower);
 
     // --- Gọi API lấy thông tin Profile thật từ Backend ---
     useEffect(() => {
@@ -44,10 +47,15 @@ export default function Profile() {
                 if (profileData) {
                     setFullName(profileData.fullName || profileData.FullName || '');
                     setEmail(profileData.email || profileData.Email || '');
-                    // Lấy dữ liệu University và Major từ DB lên
                     setUniversity(profileData.university || profileData.University || '');
                     setMajor(profileData.major || profileData.Major || '');
                     
+                    // FIX: Lấy Role/Plan mới nhất từ DB
+                    const apiRole = profileData.role || profileData.Role || profileData.planName || 'free';
+                    setUserRole(apiRole);
+                    // Cập nhật luôn lại localStorage để đồng bộ với các trang khác
+                    localStorage.setItem('role', apiRole.toLowerCase());
+
                     setStats({
                         totalInterviews: profileData.interviewsDoneThisMonth || profileData.InterviewsDoneThisMonth || profileData.totalInterviews || 0,
                         avgScore: profileData.avgScore || profileData.AvgScore || 0,
@@ -102,14 +110,12 @@ export default function Profile() {
         
         try {
             setError('');
-            // Gửi thêm trường university và major
             await updateProfile({ 
                 fullName, 
                 university: university.trim() || null, 
                 major: major.trim() || null 
             });
             
-            // Cập nhật lại local storage để đồng bộ hiển thị ngoài trang chủ (Home.jsx)
             localStorage.setItem('fullName', fullName);
             window.dispatchEvent(new Event('authChange'));
 
@@ -216,7 +222,6 @@ export default function Profile() {
                                         </div>
                                     </div>
 
-                                    {/* Thêm 2 ô nhập cho University và Major */}
                                     <div className="grid sm:grid-cols-2 gap-4">
                                         <div className="relative group">
                                             <GraduationCap className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-amber-500 transition-colors" size={18} />
@@ -235,7 +240,7 @@ export default function Profile() {
                                                 value={major} 
                                                 onChange={(e) => setMajor(e.target.value)} 
                                                 className="w-full bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 rounded-xl pl-12 pr-4 py-3 outline-none focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all font-bold text-sm" 
-                                                placeholder="Chuyên ngành (Ví dụ: Software Engineering)"
+                                                placeholder="Chuyên ngành (Ví dụ: Kỹ thuật phần mềm)"
                                             />
                                         </div>
                                     </div>
@@ -265,7 +270,7 @@ export default function Profile() {
                     {/* --- CỘT PHẢI (Skills, Premium, Settings) --- */}
                     <div className="lg:col-span-4 space-y-6 delay-200 animate-fade-in-up">
                         
-                        {/* Premium Upgrade Card */}
+                        {/* Premium Upgrade Card - Đã xử lý lại logic hiển thị */}
                         <div className="bg-gradient-to-br from-neutral-900 to-black rounded-3xl p-6 text-white shadow-xl relative overflow-hidden group">
                             <div className="absolute top-0 -left-[100%] w-1/2 h-full bg-gradient-to-r from-transparent via-white/10 to-transparent skew-x-12 group-hover:animate-[shimmer_1.5s_infinite]" />
                             <div className="relative z-10 flex items-center justify-between mb-4">
@@ -275,28 +280,33 @@ export default function Profile() {
                                         ? 'text-green-400 bg-green-400/10'
                                         : 'text-amber-400 bg-amber-400/10'
                                 }`}>
-                                    {isPaidUser ? `Gói ${currentRole.charAt(0).toUpperCase() + currentRole.slice(1)}` : 'Gói Free'}
+                                    {isPaidUser ? `Gói ${userRole.charAt(0).toUpperCase() + userRole.slice(1)}` : 'Gói Free'}
                                 </span>
                             </div>
                             <h3 className="text-lg font-black mb-1">
-                                {isPaidUser ? 'Bạn đang dùng gói cao cấp' : 'Mở khóa tiềm năng'}
+                                {isPaidUser ? 'Bạn đang dùng gói trả phí' : 'Mở khóa tiềm năng'}
                             </h3>
                             <p className="text-neutral-400 text-xs mb-5 line-clamp-2">
                                 {isPaidUser
-                                    ? 'Không giới hạn phỏng vấn, phân tích sâu bằng AI vượt bậc.'
-                                    : 'Nâng cấp để mở khóa không giới hạn phỏng vấn và phân tích AI chuyên sâu.'}
+                                    ? 'Cảm ơn bạn đã đồng hành. Hệ thống đã mở khóa các tính năng cho bạn.'
+                                    : 'Nâng cấp để mở khóa thêm lượt phỏng vấn và phân tích AI chuyên sâu.'}
                             </p>
 
-                            {isPaidUser ? (
-                                <button disabled className="w-full py-3 bg-green-500/20 text-green-400 rounded-xl font-black text-sm cursor-not-allowed flex items-center justify-center gap-2">
-                                    <CheckCircle2 size={16} /> Đã kích hoạt gói Cao cấp
+                            {/* Kiểm tra nếu là gói Ultra thì vô hiệu hóa nút nâng cấp */}
+                            {currentRoleLower === 'ultra' ? (
+                                <button disabled className="w-full py-3 bg-green-500/20 text-green-400 rounded-xl font-black text-sm cursor-not-allowed flex items-center justify-center gap-2 border border-green-500/30">
+                                    <CheckCircle2 size={16} /> Đã kích hoạt gói cao nhất
                                 </button>
                             ) : (
                                 <button
                                     onClick={() => setShowPlanModal(true)}
-                                    className="w-full py-3 bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-xl font-black text-sm shadow-md hover:opacity-90 transition-all"
+                                    className={`w-full py-3 rounded-xl font-black text-sm shadow-md hover:opacity-90 transition-all ${
+                                        isPaidUser 
+                                        ? 'bg-white text-neutral-900' // Đã mua basic/pro thì cho phép mua lên gói cao hơn
+                                        : 'bg-gradient-to-r from-amber-400 to-orange-500 text-white'
+                                    }`}
                                 >
-                                    Nâng cấp ngay ✨
+                                    {isPaidUser ? 'Nâng cấp gói cao hơn' : 'Nâng cấp ngay ✨'}
                                 </button>
                             )}
                         </div>
@@ -312,7 +322,9 @@ export default function Profile() {
                                         <div className="p-2 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl"><Crown size={18} className="text-white" /></div>
                                         <h3 className="text-xl font-black text-neutral-900">Chọn gói nâng cấp</h3>
                                     </div>
-                                    <p className="text-sm text-neutral-500 mb-6 ml-11">Bạn đang dùng <span className="font-bold text-neutral-700">Gói Free</span>. Chọn gói phù hợp để mở khóa toàn bộ tính năng.</p>
+                                    <p className="text-sm text-neutral-500 mb-6 ml-11">
+                                        Bạn đang dùng <span className="font-bold text-neutral-700">Gói {userRole.charAt(0).toUpperCase() + userRole.slice(1)}</span>. Chọn gói phù hợp để trải nghiệm tốt hơn.
+                                    </p>
 
                                     {loadingPlans ? (
                                         <div className="flex items-center justify-center py-8">
@@ -358,7 +370,7 @@ export default function Profile() {
                             </div>
                         )}
 
-                        {/* Kỹ năng phân tích (Lấy điểm thật từ API) */}
+                        {/* Kỹ năng phân tích */}
                         <div className="bg-white p-6 rounded-3xl shadow-sm border border-neutral-100">
                             <h3 className="font-black text-neutral-900 mb-5 flex items-center gap-2 text-lg"><Target size={18}/> Kỹ năng phân tích</h3>
                             {stats.totalInterviews > 0 ? (
@@ -404,6 +416,7 @@ export default function Profile() {
                             )}
                         </div>
 
+                        {/* Cài đặt & Logout */}
                         <div className="bg-white p-6 rounded-3xl shadow-sm border border-neutral-100">
                             <h3 className="font-black text-neutral-900 mb-4 flex items-center gap-2 text-lg"><Settings size={18}/> Cài đặt</h3>
                             <div className="space-y-1 mb-6">
