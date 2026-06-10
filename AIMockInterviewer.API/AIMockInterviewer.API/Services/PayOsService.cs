@@ -83,7 +83,6 @@ namespace AIMockInterviewer.API.Services
                 {
                     string orderCodeStr = verifiedData.OrderCode.ToString();
 
-                    // Tìm Transaction kèm theo thông tin User
                     var transaction = await _context.Transactions
                         .Include(t => t.User)
                         .FirstOrDefaultAsync(t => t.ExternalTransactionId == orderCodeStr && t.Status == "Pending");
@@ -92,7 +91,6 @@ namespace AIMockInterviewer.API.Services
                     {
                         transaction.Status = "Success";
 
-                        // SỬ DỤNG TRỰC TIẾP PLAN ID TỪ TRANSACTION
                         SubscriptionPlan? purchasedPlan = null;
                         if (transaction.PlanId.HasValue)
                         {
@@ -116,46 +114,53 @@ namespace AIMockInterviewer.API.Services
                             {
                                 _context.UserSubscriptions.Add(new UserSubscription
                                 {
+                                    Id = Guid.NewGuid(), // FIX 1: Chắc chắn cấp phát UUID mới
                                     UserId = transaction.UserId,
                                     PlanId = purchasedPlan.Id,
                                     Status = "Active",
                                     StartDate = DateTime.UtcNow,
-                                    EndDate = DateTime.UtcNow.AddMonths(1)
+                                    EndDate = DateTime.UtcNow.AddMonths(1),
+                                    InterviewsUsedThisMonth = 0 // FIX 2: Gán sẵn giá trị
                                 });
                             }
                         }
 
+                        // Nếu bước này văng lỗi, catch ở dưới sẽ tóm được toàn bộ
                         await _context.SaveChangesAsync();
 
-                        // Gửi email xác nhận đã được cô lập bằng try-catch
+                        // Gửi email xác nhận
                         if (transaction.User != null && !string.IsNullOrEmpty(transaction.User.Email) && purchasedPlan != null)
                         {
                             try
                             {
                                 string subject = $"🎉 Nâng cấp {purchasedPlan.PlanName} Thành Công - AI Mock Interviewer";
                                 string body = $@"
-                                    <h2>Cảm ơn bạn đã tin tưởng hệ thống!</h2>
-                                    <p>Giao dịch trị giá <strong>{transaction.Amount:N0} VNĐ</strong> đã được xác nhận.</p>
-                                    <p>Tài khoản <b>{transaction.User.Email}</b> của bạn đã được nâng cấp lên gói <strong>{purchasedPlan.PlanName}</strong>.</p>
-                                    <p>Chúc bạn có những buổi luyện tập phỏng vấn thật hiệu quả và sớm nhận được Offer như ý nhé!</p>";
+                            <h2>Cảm ơn bạn đã tin tưởng hệ thống!</h2>
+                            <p>Giao dịch trị giá <strong>{transaction.Amount:N0} VNĐ</strong> đã được xác nhận.</p>
+                            <p>Tài khoản <b>{transaction.User.Email}</b> của bạn đã được nâng cấp lên gói <strong>{purchasedPlan.PlanName}</strong>.</p>
+                            <p>Chúc bạn có những buổi luyện tập phỏng vấn thật hiệu quả nhé!</p>";
 
                                 await _emailService.SendEmailAsync(transaction.User.Email, subject, body);
                             }
                             catch (Exception emailEx)
                             {
-                                // Log lỗi ra console để debug, PayOS vẫn nhận được kết quả true (giao dịch thành công)
-                                Console.WriteLine($"Webhook - Lỗi gửi email xác nhận: {emailEx.Message}");
+                                Console.WriteLine($"Webhook - Lỗi gửi email: {emailEx.Message}");
                             }
                         }
 
                         return true;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Webhook: Không tìm thấy giao dịch Pending với OrderCode {orderCodeStr}");
                     }
                 }
                 return false;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Webhook Error: {ex.Message}");
+                // FIX 3: In ra ex.ToString() để thấy được TẬN GỐC rễ của lỗi Database
+                Console.WriteLine($"\n=== WEBHOOK ERROR CRITICAL ===\n{ex.ToString()}\n=============================\n");
                 return false;
             }
         }
