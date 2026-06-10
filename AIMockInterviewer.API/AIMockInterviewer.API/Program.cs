@@ -27,8 +27,7 @@ namespace AIMockInterviewer.API
             builder.Services.AddScoped<IInterviewService, InterviewService>();
             builder.Services.AddScoped<IUserService, UserService>();
             builder.Services.AddScoped<IAdminService, AdminService>();
-            builder.Services.AddScoped<VnPayService>();
-
+            builder.Services.AddHostedService<TransactionCleanupService>();
             // ĐÃ THÊM DÒNG NÀY ĐỂ FIX LỖI DI CHO PDFREPORTSERVICE
             builder.Services.AddScoped<PdfReportService>();
 

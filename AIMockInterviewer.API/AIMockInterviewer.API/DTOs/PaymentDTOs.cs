@@ -10,4 +10,10 @@
         public List<string> Features { get; set; } = new();
         public bool IsHighlight { get; set; } 
     }
+
+    public class CreatePaymentRequestDto
+    {
+        public Guid PlanId { get; set; }
+        public string? ReturnUrl { get; set; }
+    }
 }

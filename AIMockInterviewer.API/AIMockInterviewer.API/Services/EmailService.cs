@@ -7,12 +7,27 @@ namespace AIMockInterviewer.API.Services
     public class EmailService : IEmailService
     {
         private readonly IConfiguration _config;
-        public EmailService(IConfiguration config) { _config = config; }
+
+        public EmailService(IConfiguration config)
+        {
+            _config = config;
+        }
 
         public async Task SendEmailAsync(string toEmail, string subject, string body)
         {
+            ArgumentNullException.ThrowIfNull(toEmail);
+            ArgumentNullException.ThrowIfNull(subject);
+
+            // Lấy cấu hình, cung cấp giá trị mặc định tránh null
+            var senderName = _config["EmailConfiguration:SenderName"] ?? "AI Mock Interviewer";
+            var senderEmail = _config["EmailConfiguration:SenderEmail"] ?? throw new ArgumentNullException("SenderEmail configuration is missing.");
+            var smtpServer = _config["EmailConfiguration:SmtpServer"] ?? throw new ArgumentNullException("SmtpServer configuration is missing.");
+            var password = _config["EmailConfiguration:Password"] ?? string.Empty;
+
+            int smtpPort = int.TryParse(_config["EmailConfiguration:SmtpPort"], out int port) ? port : 587;
+
             var email = new MimeMessage();
-            email.From.Add(new MailboxAddress(_config["EmailConfiguration:SenderName"], _config["EmailConfiguration:SenderEmail"]));
+            email.From.Add(new MailboxAddress(senderName, senderEmail));
             email.To.Add(MailboxAddress.Parse(toEmail));
             email.Subject = subject;
 
@@ -20,16 +35,29 @@ namespace AIMockInterviewer.API.Services
             email.Body = builder.ToMessageBody();
 
             using var smtp = new SmtpClient();
-            await smtp.ConnectAsync(_config["EmailConfiguration:SmtpServer"], int.Parse(_config["EmailConfiguration:SmtpPort"]!), MailKit.Security.SecureSocketOptions.StartTls);
-            await smtp.AuthenticateAsync(_config["EmailConfiguration:SenderEmail"], _config["EmailConfiguration:Password"]);
+            await smtp.ConnectAsync(smtpServer, smtpPort, MailKit.Security.SecureSocketOptions.StartTls);
+            await smtp.AuthenticateAsync(senderEmail, password);
             await smtp.SendAsync(email);
             await smtp.DisconnectAsync(true);
         }
 
         public async Task SendEmailWithAttachmentAsync(string to, string subject, string body, byte[] attachmentBytes, string attachmentFileName)
         {
+            ArgumentNullException.ThrowIfNull(to);
+            ArgumentNullException.ThrowIfNull(subject);
+            ArgumentNullException.ThrowIfNull(attachmentBytes);
+            ArgumentNullException.ThrowIfNull(attachmentFileName);
+
+            var senderName = _config["Email:SenderName"] ?? "AI Mock Interviewer";
+            var senderEmail = _config["Email:SenderEmail"] ?? throw new ArgumentNullException("SenderEmail configuration is missing.");
+            var smtpServer = _config["Email:SmtpServer"] ?? throw new ArgumentNullException("SmtpServer configuration is missing.");
+            var smtpUser = _config["Email:SmtpUser"] ?? senderEmail;
+            var smtpPass = _config["Email:SmtpPass"] ?? string.Empty;
+
+            int smtpPort = int.TryParse(_config["Email:SmtpPort"], out int port) ? port : 587;
+
             var message = new MimeMessage();
-            message.From.Add(new MailboxAddress(_config["Email:SenderName"], _config["Email:SenderEmail"]));
+            message.From.Add(new MailboxAddress(senderName, senderEmail));
             message.To.Add(new MailboxAddress("", to));
             message.Subject = subject;
 
@@ -41,8 +69,8 @@ namespace AIMockInterviewer.API.Services
             message.Body = bodyBuilder.ToMessageBody();
 
             using var client = new SmtpClient();
-            await client.ConnectAsync(_config["Email:SmtpServer"], int.Parse(_config["Email:SmtpPort"]!), true);
-            await client.AuthenticateAsync(_config["Email:SmtpUser"], _config["Email:SmtpPass"]);
+            await client.ConnectAsync(smtpServer, smtpPort, true);
+            await client.AuthenticateAsync(smtpUser, smtpPass);
             await client.SendAsync(message);
             await client.DisconnectAsync(true);
         }

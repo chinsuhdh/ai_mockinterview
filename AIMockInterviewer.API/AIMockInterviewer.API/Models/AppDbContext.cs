@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 
@@ -41,7 +41,7 @@ public partial class AppDbContext : DbContext
             {
                 IConfigurationRoot configuration = new ConfigurationBuilder()
                     .SetBasePath(Directory.GetCurrentDirectory())
-                    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true) 
+                    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
                     .Build();
 
                 connectionString = configuration.GetConnectionString("DefaultConnection");
@@ -201,7 +201,18 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.PaymentMethod).HasMaxLength(50).HasColumnName("payment_method");
             entity.Property(e => e.Status).HasMaxLength(20).HasDefaultValueSql("'Pending'::character varying").HasColumnName("status");
             entity.Property(e => e.UserId).HasColumnName("user_id");
+
+            // Map cột plan_id
+            entity.Property(e => e.PlanId).HasColumnName("plan_id");
+
             entity.HasOne(d => d.User).WithMany(p => p.Transactions).HasForeignKey(d => d.UserId).OnDelete(DeleteBehavior.ClientSetNull).HasConstraintName("transactions_user_id_fkey");
+
+            // Cấu hình khoá ngoại cho PlanId
+            entity.HasOne(d => d.Plan)
+                  .WithMany()
+                  .HasForeignKey(d => d.PlanId)
+                  .OnDelete(DeleteBehavior.SetNull)
+                  .HasConstraintName("fk_transactions_subscription_plans");
         });
 
         modelBuilder.Entity<User>(entity =>

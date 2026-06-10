@@ -3,23 +3,66 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     ArrowLeft, CheckCircle2, Crown, Loader2, CreditCard,
-    ShieldCheck, Lock, Zap, ArrowRight
+    ShieldCheck, Lock, Zap, ArrowRight, Clock, RefreshCcw
 } from 'lucide-react';
 import { createPaymentLink } from '../services/paymentService';
 
 export default function Payment() {
     const location = useLocation();
     const navigate = useNavigate();
+    
+    // Lấy thông tin gói từ Home truyền qua react-router state
+    const plan = location.state?.selectedPlan;
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    // Lấy thông tin gói từ Home truyền qua react-router state
-    const plan = location.state?.selectedPlan;
+    // SỬA LỖI ESLINT: Sử dụng Lazy Initialization cho pendingUrl
+    // Khởi tạo state thẳng từ localStorage thay vì dùng useEffect để tránh render 2 lần
+    const [pendingUrl, setPendingUrl] = useState(() => {
+        if (!plan) return null;
+        const stored = localStorage.getItem('pending_payment');
+        if (stored) {
+            const data = JSON.parse(stored);
+            // Kiểm tra xem giao dịch có đúng gói này và còn hạn không
+            if (data.planId === plan.id && data.expiresAt > Date.now()) {
+                return data.url;
+            }
+            // Nếu hết hạn hoặc sai gói thì dọn dẹp
+            localStorage.removeItem('pending_payment');
+        }
+        return null;
+    });
+
+    const [timeLeft, setTimeLeft] = useState(null);
 
     useEffect(() => {
         // Nếu truy cập thẳng /payment mà không có gói → về trang chủ
         if (!plan) navigate('/', { replace: true });
     }, [plan, navigate]);
+
+    // BỘ ĐẾM NGƯỢC 30 PHÚT
+    useEffect(() => {
+        if (!pendingUrl) return;
+
+        const stored = JSON.parse(localStorage.getItem('pending_payment'));
+        
+        const interval = setInterval(() => {
+            const remaining = Math.floor((stored.expiresAt - Date.now()) / 1000);
+            
+            if (remaining <= 0) {
+                // Hết hạn 30 phút -> Xóa local storage và state (Khớp với BE)
+                localStorage.removeItem('pending_payment');
+                setPendingUrl(null);
+                setTimeLeft(null);
+                clearInterval(interval);
+            } else {
+                setTimeLeft(remaining);
+            }
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [pendingUrl]);
 
     if (!plan) return null;
 
@@ -39,6 +82,13 @@ export default function Payment() {
                 (typeof res.data === 'string' ? res.data : null);
 
             if (paymentUrl) {
+                // LƯU VÀO LOCALSTORAGE: Hết hạn sau 30 phút (30 * 60 * 1000 ms)
+                localStorage.setItem('pending_payment', JSON.stringify({
+                    url: paymentUrl,
+                    planId: plan.id,
+                    expiresAt: Date.now() + 30 * 60 * 1000 
+                }));
+                
                 window.location.href = paymentUrl;
             } else {
                 setError('Không nhận được link thanh toán từ server. Vui lòng thử lại.');
@@ -51,16 +101,26 @@ export default function Payment() {
         }
     };
 
-    const periodLabel = plan.period
-        ? plan.period.replace('/', '').trim()
-        : '1 tháng';
+    // Xử lý hủy giao dịch cũ để tạo cái mới
+    const handleCancelPending = () => {
+        localStorage.removeItem('pending_payment');
+        setPendingUrl(null);
+        setTimeLeft(null);
+    };
+
+    // Format giây thành dạng Phút:Giây (VD: 29:59)
+    const formatTime = (seconds) => {
+        if (!seconds) return "00:00";
+        const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+        const s = (seconds % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+    };
+
+    const periodLabel = plan.period ? plan.period.replace('/', '').trim() : '1 tháng';
 
     const containerVariants = {
         hidden: { opacity: 0 },
-        show: {
-            opacity: 1,
-            transition: { staggerChildren: 0.1 }
-        }
+        show: { opacity: 1, transition: { staggerChildren: 0.1 } }
     };
 
     const itemVariants = {
@@ -71,13 +131,9 @@ export default function Payment() {
     return (
         <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans selection:bg-amber-200 selection:text-amber-900 relative">
             
-            {/* ── Background Pattern (Giúp lấp đầy khoảng trống 2 bên) ── */}
             <div className="absolute inset-0 z-0 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:24px_24px] opacity-60 pointer-events-none" />
-            
-            {/* Background Glow trang trí thêm */}
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-amber-400/5 rounded-full blur-[120px] pointer-events-none z-0" />
 
-            {/* ── Navbar ── */}
             <nav className="w-full bg-white/80 backdrop-blur-md border-b border-slate-200/60 py-4 px-6 md:px-10 flex items-center justify-between sticky top-0 z-50 transition-all">
                 <motion.div 
                     initial={{ opacity: 0, x: -20 }}
@@ -101,19 +157,15 @@ export default function Payment() {
                 </motion.button>
             </nav>
 
-            {/* ── Main Content ── */}
             <div className="flex-1 flex items-center justify-center p-4 md:p-8 relative z-10">
                 <motion.div
                     initial={{ opacity: 0, y: 30, scale: 0.98 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                    /* TĂNG CHIỀU RỘNG TỪ max-w-5xl LÊN max-w-[1200px], TĂNG GRID PROPORTION */
                     className="max-w-[1200px] w-full grid lg:grid-cols-[1.2fr_1fr] min-h-[640px] rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.08)] overflow-hidden border border-slate-200/80 bg-white"
                 >
-                    {/* ── Cột trái: Chi tiết gói ── */}
-                    {/* TĂNG PADDING lg:p-16 ĐỂ NỘI DUNG THOÁNG HƠN */}
+                    {/* Cột trái */}
                     <div className="p-8 md:p-12 lg:p-16 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 text-white flex flex-col justify-between relative overflow-hidden">
-                        
                         <div className="absolute -top-32 -right-32 w-96 h-96 bg-amber-500/20 rounded-full blur-[90px] pointer-events-none" />
                         <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-blue-500/10 rounded-full blur-[90px] pointer-events-none" />
 
@@ -124,8 +176,7 @@ export default function Payment() {
                                 transition={{ delay: 0.2 }}
                                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 text-amber-400 text-xs font-bold uppercase tracking-widest mb-8 border border-amber-500/20 backdrop-blur-sm"
                             >
-                                <Crown size={16} />
-                                Tóm tắt đơn hàng
+                                <Crown size={16} /> Tóm tắt đơn hàng
                             </motion.span>
                             
                             <motion.h2 
@@ -175,10 +226,8 @@ export default function Payment() {
                         </div>
                     </div>
 
-                    {/* ── Cột phải: Thanh toán ── */}
-                    {/* TĂNG PADDING TƯƠNG ỨNG CỘT TRÁI */}
+                    {/* Cột phải */}
                     <div className="p-8 md:p-12 lg:p-16 flex flex-col justify-center bg-white relative">
-                        
                         <div className="mb-10 p-8 bg-slate-50/50 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden">
                             <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-400" />
                             <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center justify-between">
@@ -199,18 +248,22 @@ export default function Payment() {
                         </div>
 
                         <div className="flex flex-col gap-5 mb-10 px-2">
+                            {/* SỬA LỖI ESLINT: Gán Icon ra một biến riêng để React hiểu đây là Component */}
                             {[
                                 { icon: Zap, text: 'Kích hoạt ngay lập tức sau khi thanh toán' },
                                 { icon: Lock, text: 'Chủ động hủy gia hạn bất cứ lúc nào' },
                                 { icon: ShieldCheck, text: 'Cam kết bảo mật thông tin tuyệt đối 100%' },
-                            ].map(({ icon: Icon, text }) => (
-                                <div key={text} className="flex items-center gap-4 text-base text-slate-600 font-medium">
-                                    <div className="bg-amber-50 p-2 rounded-xl">
-                                        <Icon size={18} className="text-amber-600 shrink-0" />
+                            ].map((item) => {
+                                const IconComponent = item.icon;
+                                return (
+                                    <div key={item.text} className="flex items-center gap-4 text-base text-slate-600 font-medium">
+                                        <div className="bg-amber-50 p-2 rounded-xl">
+                                            <IconComponent size={18} className="text-amber-600 shrink-0" />
+                                        </div>
+                                        {item.text}
                                     </div>
-                                    {text}
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
 
                         <AnimatePresence>
@@ -234,26 +287,51 @@ export default function Payment() {
                             )}
                         </AnimatePresence>
 
-                        <button
-                            onClick={handleCheckout}
-                            disabled={loading}
-                            className="group relative overflow-hidden w-full py-5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-bold text-xl flex items-center justify-center gap-3 transition-all duration-300 shadow-xl shadow-slate-900/10 hover:shadow-slate-900/20 active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100"
-                        >
-                            <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent group-hover:animate-[shimmer_1.5s_infinite]" />
-                            
-                            {loading ? (
-                                <>
-                                    <Loader2 size={24} className="animate-spin text-amber-400" />
-                                    <span>Đang khởi tạo giao dịch...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <CreditCard size={24} />
-                                    <span>Thanh toán bảo mật</span>
-                                    <ArrowRight size={20} className="absolute right-8 opacity-0 -translate-x-4 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300" />
-                                </>
-                            )}
-                        </button>
+                        {/* KIỂM TRA HIỂN THỊ NÚT DỰA TRÊN STATE PENDING */}
+                        {pendingUrl ? (
+                            <div className="flex flex-col gap-3">
+                                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-amber-800">
+                                    <div className="flex items-center gap-2 font-medium">
+                                        <Clock className="animate-pulse" size={18} />
+                                        <span>Đơn hàng đang chờ thanh toán</span>
+                                    </div>
+                                    <span className="font-bold tabular-nums">{formatTime(timeLeft)}</span>
+                                </div>
+                                <button
+                                    onClick={() => window.location.href = pendingUrl}
+                                    className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-colors shadow-lg shadow-amber-500/20"
+                                >
+                                    <CreditCard size={20} /> Tiếp tục thanh toán
+                                </button>
+                                <button
+                                    onClick={handleCancelPending}
+                                    className="w-full py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-colors"
+                                >
+                                    <RefreshCcw size={20} /> Tạo giao dịch mới
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={handleCheckout}
+                                disabled={loading}
+                                className="group relative overflow-hidden w-full py-5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-bold text-xl flex items-center justify-center gap-3 transition-all duration-300 shadow-xl shadow-slate-900/10 hover:shadow-slate-900/20 active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100"
+                            >
+                                <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent group-hover:animate-[shimmer_1.5s_infinite]" />
+                                
+                                {loading ? (
+                                    <>
+                                        <Loader2 size={24} className="animate-spin text-amber-400" />
+                                        <span>Đang khởi tạo giao dịch...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <CreditCard size={24} />
+                                        <span>Thanh toán bảo mật</span>
+                                        <ArrowRight size={20} className="absolute right-8 opacity-0 -translate-x-4 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300" />
+                                    </>
+                                )}
+                            </button>
+                        )}
 
                         <p className="text-center text-sm text-slate-400 font-medium mt-8">
                             Bằng cách tiếp tục, bạn đồng ý với{' '}
