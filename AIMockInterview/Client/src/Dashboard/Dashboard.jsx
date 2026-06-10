@@ -39,11 +39,14 @@ export default function Dashboard() {
                     apiClient.get('/api/User/dashboard-stats')
                 ]);
 
-                // 1. Lấy thông tin cá nhân và gói cước (Role)
+                // 1. FIX: Lấy thông tin cá nhân và gói cước chuẩn xác nhất giống Profile.jsx
                 const profileData = profileRes.data?.data || profileRes.data;
                 if (profileData) {
                     setUserName(profileData.fullName || profileData.FullName || 'Bạn');
-                    setUserRole((profileData.role || profileData.Role || 'user').toLowerCase());
+                    
+                    // Kiểm tra planName từ database nếu role chỉ là user chung chung
+                    const apiRole = profileData.role || profileData.Role || profileData.planName || 'user';
+                    setUserRole(apiRole.toLowerCase());
                 }
 
                 // 2. Lấy danh sách lịch sử phỏng vấn
@@ -67,7 +70,6 @@ export default function Dashboard() {
 
                 // 4. Lấy dữ liệu Radar Chart (Lỗ hổng kỹ năng)
                 if (historyData.length > 0) {
-                    // Ưu tiên lấy jobDescriptionId từ phiên phỏng vấn mới nhất
                     const latestJdId = historyData[0].jobDescriptionId || historyData[0].JobDescriptionId; 
                     
                     if (latestJdId) {
@@ -80,7 +82,6 @@ export default function Dashboard() {
                             console.error("Lỗi khi tải dữ liệu Radar:", radarErr);
                         }
                     } else if (formattedChart.length > 0) {
-                        // Fallback: Nếu backend chưa trả về JdId trong lịch sử, tự dựng data từ tháng gần nhất
                         const latestMonth = formattedChart[formattedChart.length - 1];
                         const fallbackRadar = Object.keys(latestMonth)
                             .filter(k => k !== 'month' && k !== 'averageScore')
@@ -144,7 +145,7 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            <div className="max-w-[1400px] mx-auto space-y-6">
+            <div className="max-[1400px] mx-auto space-y-6">
 
                 {/* Error Banner */}
                 {error && (
@@ -160,7 +161,7 @@ export default function Dashboard() {
                     <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-bl from-amber-500/20 to-transparent rounded-full blur-[80px] pointer-events-none translate-x-1/4 -translate-y-1/4" />
                     <div className="relative z-10 text-center md:text-left">
                         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-amber-300 font-bold text-xs uppercase mb-3 border border-white/10 backdrop-blur-md">
-                            <Sparkles size={14} /> Ready for 2026
+                            <Sparkles size={14} /> Gói dịch vụ: {userRole.toUpperCase()}
                         </div>
                         <h1 className="text-3xl md:text-4xl font-black text-white mb-2">Chào mừng, {userName}!</h1>
                         <p className="text-neutral-400 text-base max-w-xl">
@@ -210,7 +211,6 @@ export default function Dashboard() {
                                     </p>
                                 </div>
                                 
-                                {/* Nút Toggle giữa 2 biểu đồ */}
                                 <div className="flex bg-neutral-100 p-1 rounded-xl w-fit">
                                     <button 
                                         onClick={() => setViewMode('line')}
@@ -237,50 +237,16 @@ export default function Dashboard() {
                                     <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                                         <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F5F5F5" />
-                                            <XAxis 
-                                                dataKey="month" 
-                                                axisLine={false} 
-                                                tickLine={false} 
-                                                tick={{ fontSize: 12, fill: '#A3A3A3', fontWeight: 600 }} 
-                                                dy={10} 
-                                            />
-                                            <YAxis 
-                                                axisLine={false} 
-                                                tickLine={false} 
-                                                tick={{ fontSize: 12, fill: '#A3A3A3', fontWeight: 600 }} 
-                                                domain={[0, 100]} 
-                                            />
-                                            <Tooltip
-                                                contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', fontWeight: 600 }}
-                                                itemStyle={{ fontSize: '13px' }}
-                                                labelStyle={{ color: '#A3A3A3', marginBottom: '4px', fontSize: '12px' }}
-                                                cursor={{ stroke: '#F59E0B', strokeWidth: 1, strokeDasharray: '4 4' }}
-                                            />
+                                            <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#A3A3A3', fontWeight: 600 }} dy={10} />
+                                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#A3A3A3', fontWeight: 600 }} domain={[0, 100]} />
+                                            <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', fontWeight: 600 }} itemStyle={{ fontSize: '13px' }} labelStyle={{ color: '#A3A3A3', marginBottom: '4px', fontSize: '12px' }} cursor={{ stroke: '#F59E0B', strokeWidth: 1, strokeDasharray: '4 4' }} />
                                             <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', fontWeight: 600, paddingTop: '10px' }} />
                                             
-                                            <Line 
-                                                type="monotone" 
-                                                dataKey="averageScore" 
-                                                name="Điểm Trung Bình" 
-                                                stroke="#F59E0B" 
-                                                strokeWidth={3} 
-                                                dot={{ r: 4, strokeWidth: 2, fill: '#fff' }} 
-                                                activeDot={{ r: 6, stroke: '#F59E0B', strokeWidth: 2 }} 
-                                            />
+                                            <Line type="monotone" dataKey="averageScore" name="Điểm Trung Bình" stroke="#F59E0B" strokeWidth={3} dot={{ r: 4, strokeWidth: 2, fill: '#fff' }} activeDot={{ r: 6, stroke: '#F59E0B', strokeWidth: 2 }} />
                                             
                                             {Object.keys(chartData[0] || {}).filter(k => k !== 'month' && k !== 'averageScore').map((criteriaKey, idx) => {
                                                 const colors = ['#3B82F6', '#10B981', '#8B5CF6', '#EC4899'];
-                                                return (
-                                                    <Line 
-                                                        key={criteriaKey}
-                                                        type="monotone" 
-                                                        dataKey={criteriaKey} 
-                                                        name={criteriaKey} 
-                                                        stroke={colors[idx % colors.length]} 
-                                                        strokeWidth={2} 
-                                                        dot={false} 
-                                                    />
-                                                );
+                                                return <Line key={criteriaKey} type="monotone" dataKey={criteriaKey} name={criteriaKey} stroke={colors[idx % colors.length]} strokeWidth={2} dot={false} />;
                                             })}
                                         </LineChart>
                                     </ResponsiveContainer>
@@ -290,17 +256,8 @@ export default function Dashboard() {
                                             <PolarGrid stroke="#E5E5E5" />
                                             <PolarAngleAxis dataKey="subject" tick={{ fill: '#525252', fontSize: 13, fontWeight: 700 }} />
                                             <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                                            <Radar 
-                                                name="Điểm kỹ năng" 
-                                                dataKey="score" 
-                                                stroke="#F59E0B" 
-                                                strokeWidth={2}
-                                                fill="#F59E0B" 
-                                                fillOpacity={0.4} 
-                                            />
-                                            <Tooltip 
-                                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', fontWeight: 600 }}
-                                            />
+                                            <Radar name="Điểm kỹ năng" dataKey="score" stroke="#F59E0B" strokeWidth={2} fill="#F59E0B" fillOpacity={0.4} />
+                                            <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', fontWeight: 600 }} />
                                         </RadarChart>
                                     </ResponsiveContainer>
                                 )}
@@ -337,7 +294,7 @@ export default function Dashboard() {
                         </div>
                     </div>
 
-                    {/* --- CỘT PHẢI (Lịch sử) --- */}
+                    {/* --- CỘT PHẢI (Lịch sử & Gói cước) --- */}
                     <div className="lg:col-span-4 space-y-6 animate-fade-in-up delay-400">
                         <div className="bg-white p-6 rounded-3xl shadow-sm border border-neutral-100 h-full flex flex-col">
                             <div className="flex justify-between items-center mb-6">
@@ -358,18 +315,10 @@ export default function Dashboard() {
                                             onClick={() => navigate(`/dashboard/session/${id}`)}
                                             className="p-4 rounded-2xl border border-neutral-100 hover:border-amber-200 hover:shadow-md transition-all cursor-pointer bg-neutral-50 hover:bg-white group"
                                         >
-                                            <h4 className="font-bold text-neutral-900 text-sm line-clamp-1 group-hover:text-amber-600">
-                                                {title}
-                                            </h4>
+                                            <h4 className="font-bold text-neutral-900 text-sm line-clamp-1 group-hover:text-amber-600">{title}</h4>
                                             <div className="flex items-center justify-between mt-2">
-                                                <span className="text-xs font-medium text-neutral-500">
-                                                    {rawDate ? new Date(rawDate).toLocaleDateString('vi-VN') : '—'}
-                                                </span>
-                                                {score != null ? (
-                                                    <span className="text-sm font-black text-green-500">{score} điểm</span>
-                                                ) : (
-                                                    <span className="text-[10px] font-bold px-2 py-1 bg-amber-100 text-amber-700 rounded-md">Đang dở</span>
-                                                )}
+                                                <span className="text-xs font-medium text-neutral-500">{rawDate ? new Date(rawDate).toLocaleDateString('vi-VN') : '—'}</span>
+                                                {score != null ? <span className="text-sm font-black text-green-500">{score} điểm</span> : <span className="text-[10px] font-bold px-2 py-1 bg-amber-100 text-amber-700 rounded-md">Đang dở</span>}
                                             </div>
                                         </div>
                                     );
@@ -381,14 +330,30 @@ export default function Dashboard() {
                                 )}
                             </div>
 
-                            {/* Khối quản lý Gói Cước dựa trên dữ liệu thật */}
+                            {/* --- ĐÃ FIX: KHỐI QUẢN LÝ GÓI CƯỚC ĐA DẠNG TIÊU CHÍ --- */}
                             <div className="mt-6 pt-6 border-t border-neutral-100">
-                                {userRole === 'premium' || userRole === 'pro' || userRole === 'ultra' ? (
+                                {['premium', 'pro', 'ultra'].includes(userRole) ? (
                                     <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4 text-center">
                                         <div className="flex items-center justify-center gap-1.5 font-black text-amber-700 text-sm uppercase tracking-wide">
-                                            <Crown size={16} className="fill-amber-500 text-amber-600" /> Tài khoản Premium Pro
+                                            <Crown size={16} className="fill-amber-500 text-amber-600" /> Gói {userRole.toUpperCase()}
                                         </div>
                                         <p className="text-xs font-semibold text-neutral-500 mt-1">Bạn đang có đặc quyền phỏng vấn không giới hạn.</p>
+                                    </div>
+                                ) : userRole === 'basic' ? (
+                                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 text-center">
+                                        <div className="flex items-center justify-center gap-1.5 font-black text-blue-700 text-sm uppercase tracking-wide">
+                                            <Sparkles size={16} className="fill-blue-500 text-blue-600" /> Tài khoản Basic
+                                        </div>
+                                        <div className="flex justify-between text-sm mt-3 mb-2 px-2">
+                                            <span className="text-neutral-600 font-bold">Lượt dùng trong tháng</span>
+                                            <span className="font-black text-blue-600">{Math.min(sessions.length, 10)}/10</span>
+                                        </div>
+                                        <div className="w-full bg-blue-200/50 rounded-full h-2 mb-3">
+                                            <div className="bg-blue-500 h-full rounded-full transition-all duration-500" style={{ width: `${Math.min((sessions.length / 10) * 100, 100)}%` }} />
+                                        </div>
+                                        <button onClick={() => navigate('/#pricing')} className="w-full py-2 bg-neutral-900 text-white text-xs font-bold rounded-xl hover:bg-black transition-colors flex items-center justify-center gap-2">
+                                            <Crown size={14} className="text-amber-400" /> Lên Premium (99k)
+                                        </button>
                                     </div>
                                 ) : (
                                     <>

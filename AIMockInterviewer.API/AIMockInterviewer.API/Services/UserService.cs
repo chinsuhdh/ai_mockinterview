@@ -22,10 +22,17 @@ namespace AIMockInterviewer.API.Services
 
             if (user == null) return null;
 
-            // Kiểm tra gói cước hiện tại
+            // Kiểm tra gói cước hiện tại từ bảng Subscriptions
             var activeSub = await _context.UserSubscriptions
                 .Include(s => s.Plan)
-                .FirstOrDefaultAsync(s => s.UserId == userId && s.Status == "Active" && s.EndDate > DateTime.UtcNow);
+                .Where(s => s.UserId == userId && s.Status == "Active" && s.EndDate > DateTime.UtcNow)
+                .OrderByDescending(s => s.EndDate)
+                .FirstOrDefaultAsync();
+
+            // Nếu có gói đang Active thì lấy tên gói, ngược lại mặc định là "Free"
+            string currentPlan = (activeSub != null && activeSub.Plan != null)
+                ? activeSub.Plan.PlanName
+                : "Free";
 
             // Đếm số lần phỏng vấn trong tháng
             var currentMonth = DateTime.UtcNow.Month;
@@ -35,11 +42,11 @@ namespace AIMockInterviewer.API.Services
 
             return new UserProfileResponse
             {
-                Email = user.Email,
-                FullName = user.UserProfile?.FullName ?? "",
+                Email = user.Email ?? string.Empty,
+                FullName = user.UserProfile?.FullName ?? string.Empty,
                 University = user.UserProfile?.University,
                 Major = user.UserProfile?.Major,
-                CurrentPlan = activeSub != null ? activeSub.Plan.PlanName : "Free",
+                CurrentPlan = currentPlan,
                 InterviewsDoneThisMonth = sessionsThisMonth
             };
         }
@@ -76,7 +83,6 @@ namespace AIMockInterviewer.API.Services
 
         public async Task<List<InterviewHistoryResponse>> GetInterviewHistoryAsync(Guid userId)
         {
-            // Lấy danh sách phỏng vấn, join với JD và Feedback để lấy điểm số
             var history = await _context.InterviewSessions
                 .Include(s => s.JobDescription)
                 .Include(s => s.InterviewFeedback)
@@ -85,9 +91,9 @@ namespace AIMockInterviewer.API.Services
                 .Select(s => new InterviewHistoryResponse
                 {
                     SessionId = s.Id,
-                    JobTitle = s.JobDescription.Title,
+                    JobTitle = s.JobDescription != null ? s.JobDescription.Title : string.Empty,
                     StartedAt = s.StartedAt,
-                    Status = s.Status,
+                    Status = s.Status ?? string.Empty,
                     OverallScore = s.InterviewFeedback != null ? s.InterviewFeedback.OverallScore : null
                 })
                 .ToListAsync();
@@ -97,44 +103,41 @@ namespace AIMockInterviewer.API.Services
 
         public async Task<InterviewDetailResponse?> GetInterviewDetailAsync(Guid userId, Guid sessionId)
         {
-            // Lấy session, join với JD, Feedback, Criteria và Messages
             var session = await _context.InterviewSessions
                 .Include(s => s.JobDescription)
                 .Include(s => s.InterviewFeedback)
-                    .ThenInclude(f => f.FeedbackCriteria) // Join lồng vào bảng Criteria
+                    .ThenInclude(f => f.FeedbackCriteria)
                 .Include(s => s.InterviewMessages)
                 .FirstOrDefaultAsync(s => s.Id == sessionId && s.UserId == userId);
 
-            if (session == null) return null; // Không tìm thấy hoặc của user khác
+            if (session == null) return null;
 
             return new InterviewDetailResponse
             {
                 SessionId = session.Id,
-                JobTitle = session.JobDescription.Title,
+                JobTitle = session.JobDescription?.Title ?? string.Empty,
                 StartedAt = session.StartedAt,
                 EndedAt = session.EndedAt,
-                Status = session.Status,
+                Status = session.Status ?? string.Empty,
                 OverallScore = session.InterviewFeedback?.OverallScore,
                 GeneralComment = session.InterviewFeedback?.GeneralComment,
 
-                // Lấy danh sách điểm thành phần
-                Criteria = session.InterviewFeedback?.FeedbackCriteria.Select(c => new CriterionDto
+                Criteria = session.InterviewFeedback?.FeedbackCriteria?.Select(c => new CriterionDto
                 {
-                    Name = c.CriteriaName,
+                    Name = c.CriteriaName ?? string.Empty,
                     Score = c.Score ?? 0,
-                    Comment = c.Comment ?? ""
+                    Comment = c.Comment ?? string.Empty
                 }).ToList() ?? new List<CriterionDto>(),
 
-                // Lấy lịch sử đoạn chat (bỏ qua tin nhắn System chứa text dài ngoằng của JD/CV)
-                Messages = session.InterviewMessages
+                Messages = session.InterviewMessages?
                     .Where(m => m.SenderRole != "System")
                     .OrderBy(m => m.CreatedAt)
                     .Select(m => new MessageDto
                     {
-                        Sender = m.SenderRole,
-                        Content = m.MessageContent,
+                        Sender = m.SenderRole ?? string.Empty,
+                        Content = m.MessageContent ?? string.Empty,
                         Timestamp = m.CreatedAt
-                    }).ToList()
+                    }).ToList() ?? new List<MessageDto>()
             };
         }
 
@@ -149,13 +152,15 @@ namespace AIMockInterviewer.API.Services
                 .ToListAsync();
 
             var monthlyStats = sessions
-                .GroupBy(s => new { Year = s.StartedAt.Value.Year, Month = s.StartedAt.Value.Month })
+                .Where(s => s.StartedAt.HasValue)
+                .GroupBy(s => new { Year = s.StartedAt!.Value.Year, Month = s.StartedAt!.Value.Month })
                 .Select(g =>
                 {
                     var allCriteria = g.SelectMany(s => s.InterviewFeedback?.FeedbackCriteria ?? new List<FeedbackCriterion>());
 
                     var criteriaAverages = allCriteria
-                        .GroupBy(c => c.CriteriaName)
+                        .Where(c => !string.IsNullOrEmpty(c.CriteriaName))
+                        .GroupBy(c => c.CriteriaName!)
                         .ToDictionary(
                             cg => cg.Key,
                             cg => Math.Round(cg.Average(c => (double?)c.Score) ?? 0.0, 1)
@@ -175,7 +180,6 @@ namespace AIMockInterviewer.API.Services
 
         public async Task<object> GetSkillGapStatsAsync(Guid userId, Guid jobDescriptionId)
         {
-            // 1. Lấy tất cả các session đã hoàn thành cho JD này
             var sessions = await _context.InterviewSessions
                 .Include(s => s.InterviewFeedback)
                     .ThenInclude(f => f.FeedbackCriteria)
@@ -190,21 +194,19 @@ namespace AIMockInterviewer.API.Services
                 return new { Success = false, Message = "Chưa có dữ liệu phỏng vấn hoàn tất cho công việc này." };
             }
 
-            // 2. Gom tất cả tiêu chí từ các feedback lại
             var allCriteria = sessions.SelectMany(s => s.InterviewFeedback!.FeedbackCriteria);
 
-            // 3. Nhóm theo tên tiêu chí và tính trung bình
             var radarData = allCriteria
-                .GroupBy(c => c.CriteriaName)
+                .Where(c => !string.IsNullOrEmpty(c.CriteriaName))
+                .GroupBy(c => c.CriteriaName!)
                 .Select(g => new RadarPointDto
                 {
-                    Subject = g.Key, // Ví dụ: "Logic", "Phát âm"
+                    Subject = g.Key,
                     Score = Math.Round(g.Average(c => (double?)c.Score) ?? 0.0, 1),
-                    FullMark = 100 // Giả định AI chấm trên thang điểm 100
+                    FullMark = 100
                 })
                 .ToList();
 
-            // 4. Tính điểm tổng quan trung bình
             var averageOverall = Math.Round(sessions.Average(s => (double?)s.InterviewFeedback!.OverallScore) ?? 0.0, 1);
 
             var result = new SkillGapRadarResponse
@@ -218,4 +220,4 @@ namespace AIMockInterviewer.API.Services
             return new { Success = true, Data = result };
         }
     }
-} 
+}
