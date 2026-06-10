@@ -137,5 +137,85 @@ namespace AIMockInterviewer.API.Services
                     }).ToList()
             };
         }
+
+        public async Task<object> GetUserDashboardStatsAsync(Guid userId)
+        {
+            var sixMonthsAgo = DateTime.UtcNow.AddMonths(-6);
+            var sessions = await _context.InterviewSessions
+                .Include(s => s.InterviewFeedback)
+                    .ThenInclude(f => f.FeedbackCriteria)
+                .Where(s => s.UserId == userId && s.Status == "Completed" && s.StartedAt >= sixMonthsAgo)
+                .OrderBy(s => s.StartedAt)
+                .ToListAsync();
+
+            var monthlyStats = sessions
+                .GroupBy(s => new { Year = s.StartedAt.Value.Year, Month = s.StartedAt.Value.Month })
+                .Select(g =>
+                {
+                    var allCriteria = g.SelectMany(s => s.InterviewFeedback?.FeedbackCriteria ?? new List<FeedbackCriterion>());
+
+                    var criteriaAverages = allCriteria
+                        .GroupBy(c => c.CriteriaName)
+                        .ToDictionary(
+                            cg => cg.Key,
+                            cg => Math.Round(cg.Average(c => (double?)c.Score) ?? 0.0, 1)
+                        );
+
+                    return new
+                    {
+                        month = $"{g.Key.Month:D2}/{g.Key.Year}",
+                        averageScore = Math.Round(g.Average(s => (double?)s.InterviewFeedback?.OverallScore) ?? 0.0, 1),
+                        criteria = criteriaAverages
+                    };
+                })
+                .ToList();
+
+            return new { Success = true, Data = monthlyStats };
+        }
+
+        public async Task<object> GetSkillGapStatsAsync(Guid userId, Guid jobDescriptionId)
+        {
+            // 1. Lấy tất cả các session đã hoàn thành cho JD này
+            var sessions = await _context.InterviewSessions
+                .Include(s => s.InterviewFeedback)
+                    .ThenInclude(f => f.FeedbackCriteria)
+                .Where(s => s.UserId == userId
+                         && s.JobDescriptionId == jobDescriptionId
+                         && s.Status == "Completed"
+                         && s.InterviewFeedback != null)
+                .ToListAsync();
+
+            if (!sessions.Any())
+            {
+                return new { Success = false, Message = "Chưa có dữ liệu phỏng vấn hoàn tất cho công việc này." };
+            }
+
+            // 2. Gom tất cả tiêu chí từ các feedback lại
+            var allCriteria = sessions.SelectMany(s => s.InterviewFeedback!.FeedbackCriteria);
+
+            // 3. Nhóm theo tên tiêu chí và tính trung bình
+            var radarData = allCriteria
+                .GroupBy(c => c.CriteriaName)
+                .Select(g => new RadarPointDto
+                {
+                    Subject = g.Key, // Ví dụ: "Logic", "Phát âm"
+                    Score = Math.Round(g.Average(c => (double?)c.Score) ?? 0.0, 1),
+                    FullMark = 100 // Giả định AI chấm trên thang điểm 100
+                })
+                .ToList();
+
+            // 4. Tính điểm tổng quan trung bình
+            var averageOverall = Math.Round(sessions.Average(s => (double?)s.InterviewFeedback!.OverallScore) ?? 0.0, 1);
+
+            var result = new SkillGapRadarResponse
+            {
+                JobDescriptionId = jobDescriptionId,
+                TotalSessions = sessions.Count,
+                AverageOverallScore = averageOverall,
+                RadarData = radarData
+            };
+
+            return new { Success = true, Data = result };
+        }
     }
-}
+} 

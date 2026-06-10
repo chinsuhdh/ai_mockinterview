@@ -5,6 +5,10 @@ import {
     CheckCircle2, Flame, Target, TrendingUp, BookOpen, Sparkles, MessageSquare,
     Loader2, AlertCircle
 } from 'lucide-react';
+import { 
+    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+    Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis 
+} from 'recharts';
 import apiClient from '../api';
 
 export default function Dashboard() {
@@ -14,8 +18,13 @@ export default function Dashboard() {
     const [userName, setUserName] = useState('Bạn');
     const [userRole, setUserRole] = useState('user');
     const [sessions, setSessions] = useState([]);
+    const [chartData, setChartData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    
+    // --- States cho Radar Chart ---
+    const [radarData, setRadarData] = useState([]);
+    const [viewMode, setViewMode] = useState('line'); // 'line' | 'radar'
 
     // --- Đồng bộ dữ liệu tổng hợp từ API ---
     useEffect(() => {
@@ -24,22 +33,65 @@ export default function Dashboard() {
                 setLoading(true);
                 setError('');
 
-                // 1. Lấy thông tin cá nhân và gói cước (Role) từ API Profile thật
-                const profileRes = await apiClient.get('/api/User/profile');
+                const [profileRes, historyRes, statsRes] = await Promise.all([
+                    apiClient.get('/api/User/profile'),
+                    apiClient.get('/api/User/interviews-history'),
+                    apiClient.get('/api/User/dashboard-stats')
+                ]);
+
+                // 1. Lấy thông tin cá nhân và gói cước (Role)
                 const profileData = profileRes.data?.data || profileRes.data;
                 if (profileData) {
                     setUserName(profileData.fullName || profileData.FullName || 'Bạn');
-                    // Ghi nhận role từ backend (ví dụ: 'free', 'premium', 'admin')
-                    const role = (profileData.role || profileData.Role || 'user').toLowerCase();
-                    setUserRole(role);
+                    setUserRole((profileData.role || profileData.Role || 'user').toLowerCase());
                 }
 
-                // 2. Lấy danh sách lịch sử phỏng vấn thật từ API
-                const historyRes = await apiClient.get('/api/User/interviews-history');
+                // 2. Lấy danh sách lịch sử phỏng vấn
                 const historyData = Array.isArray(historyRes.data) 
                     ? historyRes.data 
                     : (historyRes.data?.data ?? []);
                 setSessions(historyData);
+
+                // 3. Xử lý Dữ liệu biểu đồ Line (Trải phẳng object cho Recharts dễ đọc)
+                const rawStats = statsRes.data?.data || statsRes.data || [];
+                const formattedChart = rawStats.map(item => {
+                    const flatObj = { month: item.month, averageScore: item.averageScore };
+                    if (item.criteria) {
+                        Object.keys(item.criteria).forEach(key => {
+                            flatObj[key] = item.criteria[key];
+                        });
+                    }
+                    return flatObj;
+                });
+                setChartData(formattedChart);
+
+                // 4. Lấy dữ liệu Radar Chart (Lỗ hổng kỹ năng)
+                if (historyData.length > 0) {
+                    // Ưu tiên lấy jobDescriptionId từ phiên phỏng vấn mới nhất
+                    const latestJdId = historyData[0].jobDescriptionId || historyData[0].JobDescriptionId; 
+                    
+                    if (latestJdId) {
+                        try {
+                            const radarRes = await apiClient.get(`/api/User/skill-gap/${latestJdId}`);
+                            if (radarRes.data?.success && radarRes.data?.data?.radarData) {
+                                setRadarData(radarRes.data.data.radarData);
+                            }
+                        } catch (radarErr) {
+                            console.error("Lỗi khi tải dữ liệu Radar:", radarErr);
+                        }
+                    } else if (formattedChart.length > 0) {
+                        // Fallback: Nếu backend chưa trả về JdId trong lịch sử, tự dựng data từ tháng gần nhất
+                        const latestMonth = formattedChart[formattedChart.length - 1];
+                        const fallbackRadar = Object.keys(latestMonth)
+                            .filter(k => k !== 'month' && k !== 'averageScore')
+                            .map(key => ({
+                                subject: key,
+                                score: latestMonth[key],
+                                fullMark: 100
+                            }));
+                        setRadarData(fallbackRadar);
+                    }
+                }
 
             } catch (err) {
                 console.error("Lỗi đồng bộ Dashboard:", err);
@@ -66,11 +118,6 @@ export default function Dashboard() {
         : 0;
 
     const streak = sessions.length > 0 ? 1 : 0;
-    
-    // Lấy 5 bài phỏng vấn đã hoàn thành gần nhất cho biểu đồ
-    const recentScores = completedSessions.slice(-5).map(s => {
-        return s.score ?? s.Score ?? s.overallScore ?? s.OverallScore ?? 0;
-    });
 
     if (loading) {
         return (
@@ -148,40 +195,114 @@ export default function Dashboard() {
                 </div>
 
                 <div className="grid lg:grid-cols-12 gap-6">
-
                     {/* --- CỘT TRÁI --- */}
                     <div className="lg:col-span-8 space-y-6">
 
-                        {/* BIỂU ĐỒ TIẾN ĐỘ */}
+                        {/* BIỂU ĐỒ TIẾN ĐỘ & RADAR */}
                         <div className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-neutral-100 animate-fade-in-up delay-200">
-                            <div className="flex justify-between items-center mb-8">
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-4">
                                 <div>
-                                    <h2 className="text-xl font-black text-neutral-900">Biểu đồ tiến độ</h2>
-                                    <p className="text-sm text-neutral-500 font-medium">Điểm số 5 lần phỏng vấn gần nhất</p>
+                                    <h2 className="text-xl font-black text-neutral-900">
+                                        {viewMode === 'line' ? 'Biểu đồ tiến độ' : 'Phân tích lỗ hổng kỹ năng'}
+                                    </h2>
+                                    <p className="text-sm text-neutral-500 font-medium">
+                                        {viewMode === 'line' ? 'Trung bình điểm số theo các tháng gần nhất' : 'Dựa trên công việc bạn phỏng vấn gần nhất'}
+                                    </p>
                                 </div>
-                                {recentScores.length > 0 && (
-                                    <div className="px-3 py-1 bg-green-50 text-green-600 font-bold text-xs rounded-lg border border-green-200">Hoạt động</div>
-                                )}
+                                
+                                {/* Nút Toggle giữa 2 biểu đồ */}
+                                <div className="flex bg-neutral-100 p-1 rounded-xl w-fit">
+                                    <button 
+                                        onClick={() => setViewMode('line')}
+                                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'line' ? 'bg-white shadow-sm text-neutral-900' : 'text-neutral-500 hover:text-neutral-700'}`}
+                                    >
+                                        Tiến độ
+                                    </button>
+                                    <button 
+                                        onClick={() => setViewMode('radar')}
+                                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'radar' ? 'bg-white shadow-sm text-amber-600' : 'text-neutral-500 hover:text-neutral-700'}`}
+                                    >
+                                        Kỹ năng
+                                    </button>
+                                </div>
                             </div>
-                            <div className="h-48 flex items-end gap-2 md:gap-6 pt-4 relative">
-                                <div className="absolute top-0 left-0 w-full border-t border-dashed border-neutral-200" />
-                                <div className="absolute top-1/2 left-0 w-full border-t border-dashed border-neutral-200" />
-                                {recentScores.length > 0 ? (
-                                    recentScores.map((score, i) => (
-                                        <div key={i} className="flex-1 flex flex-col items-center justify-end h-full relative group">
-                                            <div className="opacity-0 group-hover:opacity-100 absolute -top-8 bg-neutral-900 text-white text-xs font-bold px-2 py-1 rounded transition-opacity">{score}đ</div>
-                                            <div
-                                                className={`w-full max-w-[40px] rounded-t-xl transition-all duration-700 hover:opacity-80 ${i === recentScores.length - 1 ? 'bg-gradient-to-t from-amber-400 to-orange-500 shadow-lg shadow-amber-500/20' : 'bg-neutral-200'}`}
-                                                style={{ height: `${score}%` }}
-                                            />
-                                            <span className="text-xs font-bold text-neutral-400 mt-3">Lần {i + 1}</span>
-                                        </div>
-                                    ))
-                                ) : (
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-neutral-400">
-                                        <BarChart3 size={32} className="mb-2 opacity-50" />
-                                        <p className="font-bold text-sm">Chưa có dữ liệu biểu đồ</p>
+                            
+                            <div className="h-72 w-full">
+                                {sessions.length === 0 ? (
+                                    <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400 bg-neutral-50 rounded-2xl border border-dashed border-neutral-200">
+                                        <BarChart3 size={32} className="mb-2 opacity-50 text-neutral-400" />
+                                        <p className="font-bold text-sm">Cần hoàn thành ít nhất 1 bài phỏng vấn để vẽ biểu đồ.</p>
                                     </div>
+                                ) : viewMode === 'line' ? (
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F5F5F5" />
+                                            <XAxis 
+                                                dataKey="month" 
+                                                axisLine={false} 
+                                                tickLine={false} 
+                                                tick={{ fontSize: 12, fill: '#A3A3A3', fontWeight: 600 }} 
+                                                dy={10} 
+                                            />
+                                            <YAxis 
+                                                axisLine={false} 
+                                                tickLine={false} 
+                                                tick={{ fontSize: 12, fill: '#A3A3A3', fontWeight: 600 }} 
+                                                domain={[0, 100]} 
+                                            />
+                                            <Tooltip
+                                                contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', fontWeight: 600 }}
+                                                itemStyle={{ fontSize: '13px' }}
+                                                labelStyle={{ color: '#A3A3A3', marginBottom: '4px', fontSize: '12px' }}
+                                                cursor={{ stroke: '#F59E0B', strokeWidth: 1, strokeDasharray: '4 4' }}
+                                            />
+                                            <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', fontWeight: 600, paddingTop: '10px' }} />
+                                            
+                                            <Line 
+                                                type="monotone" 
+                                                dataKey="averageScore" 
+                                                name="Điểm Trung Bình" 
+                                                stroke="#F59E0B" 
+                                                strokeWidth={3} 
+                                                dot={{ r: 4, strokeWidth: 2, fill: '#fff' }} 
+                                                activeDot={{ r: 6, stroke: '#F59E0B', strokeWidth: 2 }} 
+                                            />
+                                            
+                                            {Object.keys(chartData[0] || {}).filter(k => k !== 'month' && k !== 'averageScore').map((criteriaKey, idx) => {
+                                                const colors = ['#3B82F6', '#10B981', '#8B5CF6', '#EC4899'];
+                                                return (
+                                                    <Line 
+                                                        key={criteriaKey}
+                                                        type="monotone" 
+                                                        dataKey={criteriaKey} 
+                                                        name={criteriaKey} 
+                                                        stroke={colors[idx % colors.length]} 
+                                                        strokeWidth={2} 
+                                                        dot={false} 
+                                                    />
+                                                );
+                                            })}
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
+                                            <PolarGrid stroke="#E5E5E5" />
+                                            <PolarAngleAxis dataKey="subject" tick={{ fill: '#525252', fontSize: 13, fontWeight: 700 }} />
+                                            <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                                            <Radar 
+                                                name="Điểm kỹ năng" 
+                                                dataKey="score" 
+                                                stroke="#F59E0B" 
+                                                strokeWidth={2}
+                                                fill="#F59E0B" 
+                                                fillOpacity={0.4} 
+                                            />
+                                            <Tooltip 
+                                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', fontWeight: 600 }}
+                                            />
+                                        </RadarChart>
+                                    </ResponsiveContainer>
                                 )}
                             </div>
                         </div>

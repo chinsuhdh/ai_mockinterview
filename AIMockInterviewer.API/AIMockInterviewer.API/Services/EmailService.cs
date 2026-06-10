@@ -25,5 +25,26 @@ namespace AIMockInterviewer.API.Services
             await smtp.SendAsync(email);
             await smtp.DisconnectAsync(true);
         }
+
+        public async Task SendEmailWithAttachmentAsync(string to, string subject, string body, byte[] attachmentBytes, string attachmentFileName)
+        {
+            var message = new MimeMessage();
+            message.From.Add(new MailboxAddress(_config["Email:SenderName"], _config["Email:SenderEmail"]));
+            message.To.Add(new MailboxAddress("", to));
+            message.Subject = subject;
+
+            var bodyBuilder = new BodyBuilder { HtmlBody = body };
+
+            // Đính kèm file PDF từ mảng byte
+            bodyBuilder.Attachments.Add(attachmentFileName, attachmentBytes, new ContentType("application", "pdf"));
+
+            message.Body = bodyBuilder.ToMessageBody();
+
+            using var client = new SmtpClient();
+            await client.ConnectAsync(_config["Email:SmtpServer"], int.Parse(_config["Email:SmtpPort"]!), true);
+            await client.AuthenticateAsync(_config["Email:SmtpUser"], _config["Email:SmtpPass"]);
+            await client.SendAsync(message);
+            await client.DisconnectAsync(true);
+        }
     }
 }

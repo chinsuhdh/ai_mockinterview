@@ -65,5 +65,33 @@ namespace AIMockInterviewer.API.Controllers
 
             return Ok(detail);
         }
+
+        [HttpGet("dashboard-stats")]
+        public async Task<IActionResult> GetDashboardStats()
+        {
+            try
+            {
+                var stats = await _userService.GetUserDashboardStatsAsync(GetUserId());
+                return Ok(stats);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { Success = false, Message = $"Lỗi xử lý thống kê: {ex.Message}" });
+            }
+        }
+
+        [HttpGet("skill-gap/{jobDescriptionId}")]
+        public async Task<IActionResult> GetSkillGap(Guid jobDescriptionId)
+        {
+            try
+            {
+                var stats = await _userService.GetSkillGapStatsAsync(GetUserId(), jobDescriptionId);
+                return Ok(stats);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { Success = false, Message = $"Lỗi xử lý dữ liệu biểu đồ: {ex.Message}" });
+            }
+        }
     }
 }

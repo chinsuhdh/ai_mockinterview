@@ -10,5 +10,10 @@ namespace AIMockInterviewer.API.Interfaces
         Task<List<InterviewHistoryResponse>> GetInterviewHistoryAsync(Guid userId);
 
         Task<InterviewDetailResponse?> GetInterviewDetailAsync(Guid userId, Guid sessionId);
+
+        Task<object> GetUserDashboardStatsAsync(Guid userId);
+
+        // Thêm vào IUserService.cs
+        Task<object> GetSkillGapStatsAsync(Guid userId, Guid jobDescriptionId);
     }
 }

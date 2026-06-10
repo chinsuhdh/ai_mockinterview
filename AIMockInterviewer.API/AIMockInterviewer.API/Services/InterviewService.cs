@@ -11,11 +11,19 @@ namespace AIMockInterviewer.API.Services
     {
         private readonly AppDbContext _context;
         private readonly AiInterviewerService _aiService;
+        private readonly IEmailService _emailService;
+        private readonly PdfReportService _pdfService;
 
-        public InterviewService(AppDbContext context, AiInterviewerService aiService)
+        public InterviewService(
+            AppDbContext context,
+            AiInterviewerService aiService,
+            IEmailService emailService,
+            PdfReportService pdfService)
         {
             _context = context;
             _aiService = aiService;
+            _emailService = emailService;
+            _pdfService = pdfService;
         }
 
         public async Task<object> StartSessionAsync(Guid userId, StartInterviewRequest request)
@@ -29,7 +37,6 @@ namespace AIMockInterviewer.API.Services
             if (maxInterviews != -1 && sessionsThisMonth >= maxInterviews)
                 return new { Success = false, Message = $"Bạn đã hết {maxInterviews} lượt phỏng vấn miễn phí trong tháng. Vui lòng nâng cấp gói Premium." };
 
-            // 1. Xử lý CV
             string cvText = "Ứng viên không cung cấp CV.";
             if (request.CvFile != null && request.CvFile.Length > 0)
             {
@@ -154,6 +161,8 @@ namespace AIMockInterviewer.API.Services
         {
             var session = await _context.InterviewSessions
                 .Include(s => s.JobDescription)
+                .Include(s => s.User)
+                    .ThenInclude(u => u.UserProfile)
                 .FirstOrDefaultAsync(s => s.Id == sessionId && s.UserId == userId);
 
             if (session == null)
@@ -182,7 +191,6 @@ namespace AIMockInterviewer.API.Services
                 string cleanJson = aiJson.Replace("```json", "").Replace("```", "").Trim();
 
                 var evaluation = JsonSerializer.Deserialize<AiEvaluationResponse>(cleanJson);
-
                 if (evaluation == null) throw new Exception("Không thể parse kết quả đánh giá.");
 
                 session.Status = "Completed";
@@ -197,17 +205,50 @@ namespace AIMockInterviewer.API.Services
                 _context.InterviewFeedbacks.Add(feedback);
                 await _context.SaveChangesAsync();
 
+                var criteriaList = new List<FeedbackCriterion>();
                 foreach (var crit in evaluation.criteria)
                 {
-                    _context.FeedbackCriteria.Add(new FeedbackCriterion
+                    var newCrit = new FeedbackCriterion
                     {
                         FeedbackId = feedback.Id,
                         CriteriaName = crit.name,
                         Score = crit.score,
                         Comment = crit.comment
-                    });
+                    };
+                    _context.FeedbackCriteria.Add(newCrit);
+                    criteriaList.Add(newCrit);
                 }
                 await _context.SaveChangesAsync();
+
+                if (session.User != null && !string.IsNullOrWhiteSpace(session.User.Email))
+                {
+                    string candidateName = session.User.UserProfile?.FullName ?? "Ứng viên";
+                    string jobTitle = session.JobDescription?.Title ?? "Vị trí phỏng vấn";
+
+                    byte[] pdfBytes = _pdfService.GenerateInterviewReport(
+                        candidateName,
+                        jobTitle,
+                        evaluation.overallScore,
+                        evaluation.generalComment,
+                        criteriaList
+                    );
+
+                    string subject = $"[AI Mock Interviewer] Kết quả phỏng vấn - {jobTitle}";
+                    string body = $@"
+                        <h3>Chào {candidateName},</h3>
+                        <p>Buổi phỏng vấn mô phỏng của bạn cho vị trí <strong>{jobTitle}</strong> đã hoàn tất.</p>
+                        <p>Điểm đánh giá tổng quan: <strong>{evaluation.overallScore}/100</strong>.</p>
+                        <p>Vui lòng xem file PDF đính kèm để biết chi tiết nhận xét và cách cải thiện kỹ năng của bạn nhé.</p>
+                        <p>Trân trọng,<br>Đội ngũ AI Mock Interviewer.</p>";
+
+                    _ = _emailService.SendEmailWithAttachmentAsync(
+                        session.User.Email,
+                        subject,
+                        body,
+                        pdfBytes,
+                        $"Report_{sessionId.ToString().Substring(0, 8)}.pdf"
+                    );
+                }
 
                 return new { Success = true, Message = "Đã kết thúc và chấm điểm thành công.", Data = evaluation };
             }

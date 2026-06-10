@@ -64,4 +64,19 @@
         public string Content { get; set; } = string.Empty;
         public DateTime? Timestamp { get; set; }
     }
+
+    public class SkillGapRadarResponse
+    {
+        public Guid JobDescriptionId { get; set; }
+        public int TotalSessions { get; set; }
+        public double AverageOverallScore { get; set; }
+        public List<RadarPointDto> RadarData { get; set; } = new List<RadarPointDto>();
+    }
+
+    public class RadarPointDto
+    {
+        public string Subject { get; set; } = string.Empty; // Tên tiêu chí (Logic, Phát âm...)
+        public double Score { get; set; }                   // Điểm trung bình
+        public int FullMark { get; set; } = 100;            // Thang điểm tối đa (thường là 100)
+    }
 }
