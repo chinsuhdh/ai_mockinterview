@@ -7,8 +7,9 @@ namespace AIMockInterviewer.API.Controllers
     [ApiController]
     public class HealthController : ControllerBase
     {
-        // Endpoint: GET api/health/ping
+        // Endpoint: GET or HEAD api/health/ping
         [HttpGet("ping")]
+        [HttpHead("ping")] // Thêm dòng này để nhận request HEAD từ UptimeRobot
         [AllowAnonymous]
         public IActionResult Ping()
         {
