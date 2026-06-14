@@ -1,4 +1,6 @@
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import axios from 'axios';
 
 import Home from './Home/Home';
 import Auth from './Authentication/Auth';
@@ -32,6 +34,24 @@ const AdminRoute = ({ children }) => {
 };
 
 function App() {
+    
+    // Ghi nhận lượt truy cập 1 lần duy nhất khi người dùng vào trang web
+    useEffect(() => {
+        const recordVisit = async () => {
+            try {
+                // Nhớ đổi BASE_URL backend cho phù hợp với môi trường của bạn 
+                // Có thể cấu hình trong file .env (VITE_API_URL)
+                const apiUrl = import.meta.env.VITE_API_URL || 'https://your-render-backend-url.com';
+                
+                await axios.post(`${apiUrl}/api/Tracking/record`);
+            } catch (error) {
+                console.error("Lỗi ghi nhận truy cập:", error);
+            }
+        };
+
+        recordVisit();
+    }, []);
+
     return (
         <BrowserRouter>
             <Routes>

@@ -103,7 +103,6 @@ namespace AIMockInterviewer.API
                 options.KnownProxies.Clear();
             });
 
-            // Đã có cấu hình QuestPDF của bạn
             QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 
             var app = builder.Build();
@@ -118,7 +117,6 @@ namespace AIMockInterviewer.API
 
             app.UseRouting();
 
-            app.UseMiddleware<AIMockInterviewer.API.Middlewares.VisitorTrackingMiddleware>();
 
             app.UseCors("AllowAll");
 
