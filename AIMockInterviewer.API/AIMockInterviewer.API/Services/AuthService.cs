@@ -46,9 +46,22 @@ namespace AIMockInterviewer.API.Services
             _context.UserProfiles.Add(userProfile);
             await _context.SaveChangesAsync();
 
-            string subject = "Xác thực tài khoản - AI Mock Interviewer";
-            string body = $"<p>Mã OTP xác thực tài khoản của bạn là: <strong>{otp}</strong>. Mã có hiệu lực 15 phút.</p>";
-            await _emailService.SendEmailAsync(user.Email, subject, body);
+            // Thêm Try-Catch xử lý lỗi gửi Mail
+            try
+            {
+                string subject = "Xác thực tài khoản - AI Mock Interviewer";
+                string body = $"<p>Mã OTP xác thực tài khoản của bạn là: <strong>{otp}</strong>. Mã có hiệu lực 15 phút.</p>";
+                await _emailService.SendEmailAsync(user.Email, subject, body);
+            }
+            catch (Exception)
+            {
+                // Nếu gửi mail lỗi, rollback (xóa) user vừa tạo để tránh rác data và cho phép user đăng ký lại
+                _context.UserProfiles.Remove(userProfile);
+                _context.Users.Remove(user);
+                await _context.SaveChangesAsync();
+
+                return new AuthResponse { Success = false, Message = "Tạo tài khoản thất bại do hệ thống gửi email đang gặp sự cố. Vui lòng thử lại sau." };
+            }
 
             return new AuthResponse { Success = true, Message = "Vui lòng kiểm tra email để lấy mã OTP xác thực." };
         }
@@ -71,8 +84,6 @@ namespace AIMockInterviewer.API.Services
 
         public async Task<AuthResponse> LoginAsync(LoginRequest request)
         {
-            // 1. Query thêm Profile (nếu bạn có cấu hình quan hệ Include trong Entity Framework)
-            // Nếu chưa cấu hình Navigation Property, ta sẽ query profile ở bước sau.
             var user = await _context.Users
                 .Include(u => u.Roles)
                 .FirstOrDefaultAsync(u => u.Email == request.Email);
@@ -82,21 +93,20 @@ namespace AIMockInterviewer.API.Services
                 return new AuthResponse { Success = false, Message = "Email hoặc mật khẩu không đúng." };
             }
 
+            // Sửa lại câu thông báo lỗi cho chuẩn xác với logic IsActive = false
             if (user.IsActive == false)
             {
-                return new AuthResponse { Success = false, Message = "Tài khoản đã bị khóa." };
+                return new AuthResponse { Success = false, Message = "Tài khoản chưa được xác thực OTP. Vui lòng kiểm tra email." };
             }
 
-            // 2. Lấy thêm thông tin UserProfile để lấy FullName
             var userProfile = await _context.UserProfiles.FirstOrDefaultAsync(p => p.UserId == user.Id);
 
             var authClaims = new List<Claim>
-    {
-        new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-        new Claim(ClaimTypes.Email, user.Email ?? "")
-    };
+            {
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim(ClaimTypes.Email, user.Email ?? "")
+            };
 
-            // Lấy Role đầu tiên của User (nếu có) để trả về trong Response
             string userRole = null;
             if (user.Roles != null && user.Roles.Any())
             {
@@ -120,13 +130,12 @@ namespace AIMockInterviewer.API.Services
 
             var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
 
-            // 3. Bổ sung việc gán giá trị cho UserId, FullName, Role ở đây
             return new AuthResponse
             {
                 Success = true,
                 Message = "Đăng nhập thành công.",
                 Token = tokenString,
-                UserId = user.Id, 
+                UserId = user.Id,
                 FullName = userProfile?.FullName,
                 Role = userRole
             };
