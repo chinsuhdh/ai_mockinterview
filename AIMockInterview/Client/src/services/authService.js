@@ -24,7 +24,7 @@ export const login = (data) =>
 export const verifyOtp = (data) =>
     apiClient.post('/api/Auth/verify-otp', {
         email: data.email,
-        otp: data.otp,
+        otpCode: data.otp, // Đã sửa thành otpCode cho khớp với Backend
     });
 
 /** Gửi yêu cầu quên mật khẩu – backend sẽ gửi OTP về email */
@@ -35,7 +35,7 @@ export const forgotPassword = (email) =>
 export const resetPassword = (data) =>
     apiClient.post('/api/Auth/reset-password', {
         email: data.email,
-        otp: data.otp,
+        otpCode: data.otp, // Đã sửa thành otpCode cho khớp với Backend
         newPassword: data.newPassword,
     });
 

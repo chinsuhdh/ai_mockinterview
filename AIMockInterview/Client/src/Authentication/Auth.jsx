@@ -5,7 +5,7 @@ import { User, Lock, Mail, ArrowRight, Crown, ArrowLeft, KeyRound, RefreshCw } f
 // eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from 'framer-motion';
 
-// --- Particles & sub-components (unchanged) ---
+// --- Particles & sub-components ---
 const generateParticles = () =>
     [...Array(12)].map(() => ({
         width: Math.random() * 50 + 20,
@@ -113,32 +113,30 @@ const OtpVerifyScreen = ({ email, onSuccess, onBack }) => {
     }, [resendCooldown]);
 
     const handleVerify = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    try {
-        // 1. Sửa 'otp' thành 'otpCode' để khớp với DTO của Backend
-        await apiClient.post('/api/Auth/verify-otp', { email, otpCode: otp });
-        onSuccess();
-    } catch (err) {
-        // 2. Bắt lỗi an toàn, tránh render Object ra màn hình
-        const responseData = err.response?.data;
-        let errorMessage = 'Mã OTP không hợp lệ hoặc đã hết hạn.';
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        try {
+            // Đã sửa thành apiClient để tránh lỗi chưa import hàm verifyOtp
+            await apiClient.post('/api/Auth/verify-otp', { email, otpCode: otp });
+            onSuccess();
+        } catch (err) {
+            const responseData = err.response?.data;
+            let errorMessage = 'Mã OTP không hợp lệ hoặc đã hết hạn.';
 
-        if (typeof responseData === 'string') {
-            errorMessage = responseData;
-        } else if (responseData?.message) {
-            errorMessage = responseData.message;
-        } else if (responseData?.errors) {
-            // Xử lý object validation errors mặc định của ASP.NET Core
-            errorMessage = Object.values(responseData.errors).flat().join(', ');
+            if (typeof responseData === 'string') {
+                errorMessage = responseData;
+            } else if (responseData?.message) {
+                errorMessage = responseData.message;
+            } else if (responseData?.errors) {
+                errorMessage = Object.values(responseData.errors).flat().join(', ');
+            }
+            
+            setError(errorMessage);
+        } finally {
+            setLoading(false);
         }
-        
-        setError(errorMessage);
-    } finally {
-        setLoading(false);
-    }
-};
+    };
 
     const handleResend = async () => {
         if (resendCooldown > 0) return;
@@ -255,7 +253,6 @@ export default function Auth() {
                 localStorage.setItem('role', userRole);
 
                 // Notify same-tab listeners (Home.jsx) BEFORE navigate
-                // so the already-mounted component can re-sync immediately
                 window.dispatchEvent(new Event('authChange'));
 
                 // Small delay lets the event propagate before route change
@@ -343,7 +340,6 @@ export default function Auth() {
                                 setScreen('login');
                                 setError('');
                                 setFormData(f => ({ ...f, password: '' }));
-                                // small toast-like banner via error state (green)
                             }}
                             onBack={() => setScreen('login')}
                         />
