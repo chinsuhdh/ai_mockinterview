@@ -70,12 +70,16 @@ namespace AIMockInterviewer.API.Services
             var user = await _context.Users.FindAsync(userId);
             if (user == null) return new { Success = false, Message = "Tài khoản không tồn tại." };
 
-            // Kiểm tra mật khẩu cũ
-            if (!BCrypt.Net.BCrypt.Verify(request.OldPassword, user.PasswordHash))
+            // Đã đổi request.OldPassword thành request.CurrentPassword
+            if (!BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash))
                 return new { Success = false, Message = "Mật khẩu cũ không chính xác." };
 
             // Mã hóa mật khẩu mới và lưu
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+
+            // Xóa luôn cờ ép đổi mật khẩu (nếu có)
+            user.IsActive = true;
+
             await _context.SaveChangesAsync();
 
             return new { Success = true, Message = "Đổi mật khẩu thành công." };

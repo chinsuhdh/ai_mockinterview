@@ -19,7 +19,7 @@
 
     public class ChangePasswordRequest
     {
-        public string OldPassword { get; set; } = null!;
+        public string CurrentPassword { get; set; } = null!; // Đã sửa tên biến
         public string NewPassword { get; set; } = null!;
     }
 

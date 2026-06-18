@@ -912,7 +912,7 @@ export default function Home() {
                                     <Facebook size={18} />
                                 </a>
                                 <a 
-                                    href="https://github.com/chinsuhdh/AI-Mock-Interviewer" 
+                                    href="https://github.com/chinsuhdh/ai_mockinterview" 
                                     target="_blank" 
                                     rel="noopener noreferrer"
                                     title="Mã nguồn dự án trên GitHub"
