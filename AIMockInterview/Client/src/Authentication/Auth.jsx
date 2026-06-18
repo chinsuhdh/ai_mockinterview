@@ -368,17 +368,40 @@ export default function Auth() {
 
                             <form onSubmit={handleSubmit} className="space-y-6">
                                 <div className="space-y-4">
+                                    <AnimatePresence mode="popLayout">
+                                        {!isLogin && (
+                                            <motion.div
+                                                initial={{ opacity: 0, y: -20, height: 0 }}
+                                                animate={{ opacity: 1, y: 0, height: 'auto' }}
+                                                exit={{ opacity: 0, y: -20, height: 0 }}
+                                                transition={{ type: 'spring', stiffness: 100, damping: 15 }}
+                                                className="pb-4 overflow-hidden">
+                                                <InputField
+                                                    icon={User}
+                                                    name="fullName"
+                                                    type="text"
+                                                    placeholder="Họ và tên đầy đủ"
+                                                    required={!isLogin}
+                                                    onChange={handleChange}
+                                                    value={formData.fullName}
+                                                    onFocus={() => setFocusedField(null)}
+                                                />
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+
                                     <InputField
                                         icon={Mail}
-                                        name="username"
-                                        type={isLogin ? 'email' : 'text'}
-                                        placeholder={isLogin ? 'Email đăng nhập' : 'Tên đăng nhập'}
+                                        name={isLogin ? "username" : "email"}
+                                        type="email"
+                                        placeholder={isLogin ? 'Email đăng nhập' : 'Email của bạn'}
                                         required
                                         onChange={handleChange}
-                                        value={formData.username}
+                                        value={isLogin ? formData.username : formData.email}
                                         onFocus={() => setFocusedField('username')}
                                         onBlur={() => setFocusedField(null)}
                                     />
+                                    
                                     <InputField
                                         icon={Lock}
                                         type="password"
@@ -390,37 +413,6 @@ export default function Auth() {
                                         onFocus={() => setFocusedField('password')}
                                         onBlur={() => setFocusedField(null)}
                                     />
-                                    <AnimatePresence mode="popLayout">
-                                        {!isLogin && (
-                                            <motion.div
-                                                initial={{ opacity: 0, y: -20, height: 0 }}
-                                                animate={{ opacity: 1, y: 0, height: 'auto' }}
-                                                exit={{ opacity: 0, y: -20, height: 0 }}
-                                                transition={{ type: 'spring', stiffness: 100, damping: 15 }}
-                                                className="space-y-4 pt-2 overflow-hidden">
-                                                <InputField
-                                                    icon={User}
-                                                    name="fullName"
-                                                    type="text"
-                                                    placeholder="Họ và tên đầy đủ"
-                                                    required
-                                                    onChange={handleChange}
-                                                    value={formData.fullName}
-                                                    onFocus={() => setFocusedField(null)}
-                                                />
-                                                <InputField
-                                                    icon={Mail}
-                                                    type="email"
-                                                    name="email"
-                                                    placeholder="Email cá nhân"
-                                                    required
-                                                    onChange={handleChange}
-                                                    value={formData.email}
-                                                    onFocus={() => setFocusedField(null)}
-                                                />
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
                                 </div>
 
                                 <div className="flex items-center justify-between px-2">
