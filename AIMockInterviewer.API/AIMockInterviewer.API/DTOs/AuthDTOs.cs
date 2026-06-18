@@ -29,6 +29,8 @@
         public Guid? UserId { get; set; }
         public string? FullName { get; set; }
         public string? Role { get; set; }
+
+        public bool RequirePasswordChange { get; set; } = false;
     }
 
     // --- Thêm 2 DTO cho tính năng Quên mật khẩu ---

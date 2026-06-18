@@ -117,7 +117,6 @@ const OtpVerifyScreen = ({ email, onSuccess, onBack }) => {
         setLoading(true);
         setError('');
         try {
-            // Đã sửa thành apiClient để tránh lỗi chưa import hàm verifyOtp
             await apiClient.post('/api/Auth/verify-otp', { email, otpCode: otp });
             onSuccess();
         } catch (err) {
@@ -233,30 +232,44 @@ export default function Auth() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        
+        // Validation định dạng Email cơ bản bằng Regex (Tránh gọi API rác)
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(isLogin ? formData.username : formData.email)) {
+            setError("Email không đúng định dạng. Vui lòng kiểm tra lại (VD: ten@gmail.com).");
+            return;
+        }
+
         setLoading(true);
         setError('');
         try {
             if (isLogin) {
                 const res = await apiClient.post('/api/Auth/login', {
-                    email: formData.username,  // field "username" holds the email value
+                    email: formData.username,
                     password: formData.password,
                 });
 
-                const { token, userId, fullName, role } = res.data;
+                const { token, userId, fullName, role, requirePasswordChange } = res.data;
 
                 localStorage.setItem('token', token);
                 if (userId)   localStorage.setItem('userId',   String(userId));
                 if (fullName) localStorage.setItem('fullName', fullName);
 
-                // Ưu tiên role trả về từ backend; fallback về 'user'
                 const userRole = (role || '').toLowerCase();
                 localStorage.setItem('role', userRole);
 
-                // Notify same-tab listeners (Home.jsx) BEFORE navigate
                 window.dispatchEvent(new Event('authChange'));
 
-                // Small delay lets the event propagate before route change
+                // [CẬP NHẬT] Xử lý luồng ép đổi mật khẩu
                 setTimeout(() => {
+                    if (requirePasswordChange) {
+                        // Lưu cờ vào localStorage để nếu user f5 cũng không thoát được
+                        localStorage.setItem('forcePasswordChange', 'true');
+                        // Chuyển hướng tới trang Đổi mật khẩu
+                        navigate('/change-password', { replace: true }); 
+                        return; // Dừng tại đây
+                    }
+
                     if (userRole === 'admin') {
                         navigate('/admin');
                     } else {
@@ -270,13 +283,13 @@ export default function Auth() {
                     password: formData.password,
                     fullName: formData.fullName,
                 });
-                // Chuyển sang màn xác thực OTP
                 setPendingEmail(formData.email);
                 setScreen('otp');
             }
         } catch (err) {
             console.error(err);
-            setError(err.response?.data?.message || err.response?.data || 'Có lỗi xảy ra, vui lòng thử lại.');
+            // Ưu tiên hiển thị Message cụ thể từ Backend trả về
+            setError(err.response?.data?.message || err.response?.data || 'Có lỗi kết nối máy chủ, vui lòng thử lại.');
         } finally {
             setLoading(false);
         }

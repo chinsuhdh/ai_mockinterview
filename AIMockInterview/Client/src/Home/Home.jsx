@@ -4,11 +4,12 @@ import { motion, useScroll, useSpring, AnimatePresence } from 'framer-motion';
 import { 
     Bot, Zap, FileText, ArrowRight, Crown, Trophy, Target, 
     Play, Briefcase, Check, Star, Code2, Users, Globe, ChevronDown, 
-    ChevronUp, Facebook, Linkedin, Github, X, Mic, Send, Info, LogOut, Sparkles, Menu, Loader2
+    ChevronUp, Facebook, Linkedin, Github, X, Mic, Send, Info, LogOut, Menu, Loader2, CheckCircle2, ChevronRight, ShieldCheck
 } from 'lucide-react';
 import { getSubscriptionPlans } from '../services/paymentService';
 import { sendChatbotMessage } from '../services/chatbotService';
 
+// ── DATA & CONSTANTS ──
 const successCards = [
     { icon: <Trophy size={20} className="text-amber-600" />, text: "Offer Google $3k", sub: "Software Engineer" },
     { icon: <Star size={20} className="text-yellow-500" />, text: "Score: 98/100", sub: "Kỹ năng trả lời" },
@@ -60,6 +61,7 @@ const SECTION_MESSAGES = {
     cta: "Sẵn sàng đăng ký chưa nè? Mình giúp luôn 😁"
 };
 
+// ── SUB-COMPONENTS ──
 const FadeIn = ({ children, delay = 0, className = "" }) => (
     <motion.div
         initial={{ opacity: 0, y: 30 }}
@@ -237,10 +239,90 @@ const AIRobotAssistant = () => {
     );
 };
 
+const TermsModal = ({ isOpen, onClose }) => {
+    // Khóa cuộn trang (scroll) khi mở Modal để tăng trải nghiệm UX
+    useEffect(() => {
+        if (isOpen) document.body.style.overflow = 'hidden';
+        else document.body.style.overflow = 'unset';
+        return () => { document.body.style.overflow = 'unset'; };
+    }, [isOpen]);
+
+    return (
+        <AnimatePresence>
+            {isOpen && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6">
+                    {/* Lớp nền đen mờ (Overlay) */}
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={onClose}
+                        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+                    />
+                    
+                    {/* Bảng Modal */}
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                        className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] md:max-h-[85vh]"
+                    >
+                        {/* Header */}
+                        <div className="p-5 md:p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-amber-100 p-2 rounded-xl text-amber-600">
+                                    <ShieldCheck size={24} />
+                                </div>
+                                <h3 className="text-lg md:text-xl font-black text-slate-900">Điều khoản & Bảo mật</h3>
+                            </div>
+                            <button onClick={onClose} className="p-2 hover:bg-slate-200 text-slate-500 rounded-full transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        
+                        {/* Body - Tự động có thanh cuộn nếu nội dung quá dài */}
+                        <div className="p-5 md:p-8 overflow-y-auto custom-scrollbar text-sm text-slate-600 space-y-6 flex-1">
+                            <section>
+                                <h4 className="text-base font-bold text-slate-900 mb-2">1. Thu thập và Xử lý dữ liệu</h4>
+                                <p className="leading-relaxed">AI Interviewer thu thập các thông tin cơ bản bao gồm Email, Họ Tên và dữ liệu âm thanh/văn bản trong quá trình phỏng vấn. Dữ liệu này chỉ được sử dụng duy nhất cho mục đích phân tích năng lực và trả về kết quả cho chính bạn.</p>
+                            </section>
+                            <section>
+                                <h4 className="text-base font-bold text-slate-900 mb-2">2. Trí tuệ Nhân tạo (AI) & OpenAI</h4>
+                                <p className="leading-relaxed">Hệ thống sử dụng API của OpenAI để xử lý ngôn ngữ tự nhiên. Chúng tôi cam kết <strong>không</strong> sử dụng dữ liệu cá nhân hay CV của bạn để huấn luyện (train) cho các mô hình AI công cộng.</p>
+                            </section>
+                            <section>
+                                <h4 className="text-base font-bold text-slate-900 mb-2">3. Quyền lưu trữ & Xóa dữ liệu</h4>
+                                <p className="leading-relaxed">Tất cả lịch sử phỏng vấn được mã hóa bảo mật. Bạn có toàn quyền xem lại, hoặc yêu cầu xóa vĩnh viễn toàn bộ dữ liệu tài khoản của mình khỏi hệ thống cơ sở dữ liệu (PostgreSQL) bất kỳ lúc nào.</p>
+                            </section>
+                            <section>
+                                <h4 className="text-base font-bold text-slate-900 mb-2">4. Giới hạn trách nhiệm</h4>
+                                <p className="leading-relaxed">Kết quả đánh giá từ AI mang tính chất tham khảo và hỗ trợ luyện tập. Chúng tôi không đảm bảo kết quả này sẽ phản ánh chính xác 100% quyết định của các nhà tuyển dụng thực tế.</p>
+                            </section>
+                        </div>
+                        
+                        {/* Footer */}
+                        <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end shrink-0">
+                            <button onClick={onClose} className="px-6 md:px-8 py-2.5 md:py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors w-full sm:w-auto">
+                                Tôi đã hiểu
+                            </button>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
+        </AnimatePresence>
+    );
+};
+
+// ── MAIN COMPONENT ──
 export default function Home() {
     const navigate = useNavigate();
     const [openFaq, setOpenFaq] = useState(null);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [isTermsOpen, setIsTermsOpen] = useState(false); 
+    
+    // States for Footer Newsletter
+    const [emailSub, setEmailSub] = useState("");
+    const [isSubscribed, setIsSubscribed] = useState(false);
     
     const { scrollYProgress } = useScroll();
     const scaleX = useSpring(scrollYProgress, { stiffness: 100, damping: 30, restDelta: 0.001 });
@@ -324,6 +406,17 @@ export default function Home() {
         
         navigate('/payment', { state: { selectedPlan: plan } });
     };
+    
+    const handleSubscribe = (e) => {
+        e.preventDefault();
+        if (emailSub.trim()) {
+            setIsSubscribed(true);
+            setTimeout(() => {
+                setIsSubscribed(false);
+                setEmailSub("");
+            }, 3000);
+        }
+    };
 
     const isAuthenticated = user || localStorage.getItem('token') || localStorage.getItem('fullName');
 
@@ -340,6 +433,7 @@ export default function Home() {
                 @keyframes shimmer { 100% { transform: translateX(100%); } }
             `}</style>
 
+            <TermsModal isOpen={isTermsOpen} onClose={() => setIsTermsOpen(false)} />
             <AIRobotAssistant />
 
             <AnimatePresence>
@@ -790,61 +884,163 @@ export default function Home() {
 
             <footer className="bg-slate-950 border-t border-slate-900 pt-20 pb-10 text-slate-400">
                 <div className="max-w-7xl mx-auto px-6">
-                    <div className="grid md:grid-cols-4 gap-12 mb-16">
-                        <div className="col-span-1 md:col-span-1">
-                            <div className="flex items-center gap-2 mb-6">
-                                <div className="bg-slate-800 p-2 rounded-xl text-amber-500">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-12 mb-16">
+                        
+                        {/* Cột 1: Thông tin & Mạng xã hội */}
+                        <div className="col-span-1 md:col-span-4 lg:col-span-5">
+                            <div 
+                                className="flex items-center gap-2 mb-6 cursor-pointer group w-fit"
+                                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                            >
+                                <div className="bg-slate-800 p-2 rounded-xl text-amber-500 group-hover:-translate-y-1 group-hover:bg-amber-500 group-hover:text-white transition-all duration-300">
                                     <Crown size={20} />
                                 </div>
-                                <span className="text-xl font-black text-white">AI Interviewer.</span>
+                                <span className="text-2xl font-black text-white group-hover:text-amber-400 transition-colors">AI Interviewer.</span>
                             </div>
-                            <p className="text-sm leading-relaxed mb-6 opacity-80">
-                                Nền tảng luyện phỏng vấn AI hàng đầu Việt Nam. Giúp sinh viên tự tự tin chinh phục mọi nhà tuyển dụng.
+                            <p className="text-sm leading-relaxed mb-8 opacity-80 max-w-sm">
+                                Nền tảng luyện phỏng vấn AI hàng đầu Việt Nam. Nâng tầm kỹ năng thực chiến, giúp sinh viên tự tin chinh phục mọi nhà tuyển dụng.
                             </p>
+                            
                             <div className="flex gap-4">
-                                <div className="p-2 bg-slate-900 border border-slate-800 rounded-full hover:bg-slate-800 hover:border-slate-700 cursor-pointer transition-all duration-200 hover:-translate-y-0.5"><Facebook size={18} /></div>
-                                <div className="p-2 bg-slate-900 border border-slate-800 rounded-full hover:bg-slate-800 hover:border-slate-700 cursor-pointer transition-all duration-200 hover:-translate-y-0.5"><Linkedin size={18} /></div>
-                                <div className="p-2 bg-slate-900 border border-slate-800 rounded-full hover:bg-slate-800 hover:border-slate-700 hover:text-white cursor-pointer transition-all duration-200 hover:-translate-y-0.5"><Github size={18} /></div>
+                                <a 
+                                    href="https://www.facebook.com/profile.php?id=61590511753646" 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    title="Theo dõi chúng tôi trên Facebook"
+                                    className="p-3 bg-slate-900 border border-slate-800 rounded-full hover:bg-[#1877F2] hover:border-[#1877F2] hover:text-white cursor-pointer transition-all duration-300 hover:-translate-y-1.5 shadow-sm hover:shadow-lg hover:shadow-[#1877F2]/40"
+                                >
+                                    <Facebook size={18} />
+                                </a>
+                                <a 
+                                    href="https://github.com/chinsuhdh/AI-Mock-Interviewer" 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    title="Mã nguồn dự án trên GitHub"
+                                    className="p-3 bg-slate-900 border border-slate-800 rounded-full hover:bg-white hover:border-white hover:text-slate-900 cursor-pointer transition-all duration-300 hover:-translate-y-1.5 shadow-sm hover:shadow-lg hover:shadow-white/40"
+                                >
+                                    <Github size={18} />
+                                </a>
+                                <a 
+                                    href="#" 
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title="Kết nối qua LinkedIn"
+                                    className="p-3 bg-slate-900 border border-slate-800 rounded-full hover:bg-[#0A66C2] hover:border-[#0A66C2] hover:text-white cursor-pointer transition-all duration-300 hover:-translate-y-1.5 shadow-sm hover:shadow-lg hover:shadow-[#0A66C2]/40"
+                                >
+                                    <Linkedin size={18} />
+                                </a>
                             </div>
                         </div>
 
-                        <div>
-                            <h4 className="font-bold mb-6 text-slate-200">Sản phẩm</h4>
-                            <ul className="space-y-3 text-sm">
-                                <li className="hover:text-amber-500 cursor-pointer transition-colors">Tính năng</li>
-                                <li className="hover:text-amber-500 cursor-pointer transition-colors">Bảng giá</li>
-                                <li className="hover:text-amber-500 cursor-pointer transition-colors">Showcase</li>
-                            </ul>
+                        {/* Cột 2 & 3: Link điều hướng */}
+                        <div className="col-span-1 md:col-span-4 lg:col-span-3 flex flex-row justify-between md:justify-around">
+                            <div>
+                                <h4 className="font-bold text-lg mb-6 text-slate-200">Sản phẩm</h4>
+                                <ul className="space-y-4 text-sm font-medium">
+                                    {['Tính năng', 'Bảng giá', 'Showcase'].map(item => (
+                                        <li key={item}>
+                                            <a 
+                                                href={`#${item === 'Bảng giá' ? 'pricing' : item === 'Tính năng' ? 'features' : 'process'}`}
+                                                className="group flex items-center hover:text-amber-400 transition-colors"
+                                            >
+                                                <ChevronRight size={14} className="opacity-0 -ml-4 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300 mr-1" />
+                                                {item}
+                                            </a>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+
+                            <div>
+                                <h4 className="font-bold text-lg mb-6 text-slate-200">Hỗ trợ</h4>
+                                <ul className="space-y-4 text-sm font-medium">
+                                    <li>
+                                        <a 
+                                            href="#faq"
+                                            className="group flex items-center hover:text-amber-400 transition-colors"
+                                        >
+                                            <ChevronRight size={14} className="opacity-0 -ml-4 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300 mr-1" />
+                                            Câu hỏi thường gặp
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a 
+                                            href="mailto:buingoctam06042003@gmail.com?subject=Hỗ trợ dự án AI Mock Interviewer&body=Xin chào team hỗ trợ,%0D%0A%0D%0ATôi cần hỗ trợ về vấn đề: "
+                                            className="group flex items-center hover:text-amber-400 transition-colors"
+                                        >
+                                            <ChevronRight size={14} className="opacity-0 -ml-4 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300 mr-1" />
+                                            Liên hệ
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <button 
+                                            onClick={() => setIsTermsOpen(true)}
+                                            className="group flex items-center hover:text-amber-400 transition-colors"
+                                        >
+                                            <ChevronRight size={14} className="opacity-0 -ml-4 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300 mr-1" />
+                                            Điều khoản
+                                        </button>
+                                    </li>
+                                </ul>
+                            </div>
                         </div>
 
-                        <div>
-                            <h4 className="font-bold mb-6 text-slate-200">Hỗ trợ</h4>
-                            <ul className="space-y-3 text-sm">
-                                <li className="hover:text-amber-500 cursor-pointer transition-colors">Câu hỏi thường gặp</li>
-                                <li className="hover:text-amber-500 cursor-pointer transition-colors">Liên hệ</li>
-                                <li className="hover:text-amber-500 cursor-pointer transition-colors">Điều khoản</li>
-                            </ul>
-                        </div>
-
-                        <div>
-                            <h4 className="font-bold mb-6 text-slate-200">Đăng ký nhận tin</h4>
-                            <div className="flex gap-2">
+                        {/* Cột 4: Form Đăng ký nhận tin */}
+                        <div className="col-span-1 md:col-span-4 lg:col-span-4">
+                            <h4 className="font-bold text-lg mb-6 text-slate-200">Đăng ký nhận mẹo phỏng vấn</h4>
+                            
+                            <form onSubmit={handleSubscribe} className="relative flex items-center">
                                 <input 
-                                    placeholder="Email của bạn" 
-                                    className="bg-slate-900 border border-slate-800 px-4 py-2.5 rounded-xl text-sm w-full outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 text-white placeholder:text-slate-500 transition-all" 
+                                    type="email"
+                                    value={emailSub}
+                                    onChange={(e) => setEmailSub(e.target.value)}
+                                    placeholder="Nhập email của bạn..." 
+                                    required
+                                    disabled={isSubscribed}
+                                    className="bg-slate-900/80 border border-slate-800 px-5 py-3.5 rounded-2xl text-sm w-full outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 text-white placeholder:text-slate-500 transition-all shadow-inner" 
                                 />
-                                <button className="bg-slate-800 border border-slate-700 text-slate-300 p-2.5 rounded-xl hover:bg-amber-500 hover:text-white hover:border-amber-500 transition-all duration-200">
-                                    <ArrowRight size={18} />
+                                <button 
+                                    type="submit"
+                                    disabled={isSubscribed || !emailSub}
+                                    className={`absolute right-1.5 p-2.5 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                                        isSubscribed 
+                                            ? 'bg-green-500 text-white' 
+                                            : 'bg-amber-500 hover:bg-amber-400 text-slate-900 disabled:bg-slate-800 disabled:text-slate-600'
+                                    }`}
+                                >
+                                    {isSubscribed ? <CheckCircle2 size={18} className="animate-in zoom-in" /> : <ArrowRight size={18} />}
                                 </button>
+                            </form>
+                            
+                            <div className="mt-3 h-5">
+                                <AnimatePresence mode="wait">
+                                    {isSubscribed ? (
+                                        <motion.p 
+                                            initial={{ opacity: 0, y: -5 }} 
+                                            animate={{ opacity: 1, y: 0 }} 
+                                            exit={{ opacity: 0 }}
+                                            className="text-xs text-green-400 font-medium"
+                                        >
+                                            Cảm ơn bạn! Chúng tôi đã ghi nhận email.
+                                        </motion.p>
+                                    ) : (
+                                        <motion.p 
+                                            initial={{ opacity: 0 }} 
+                                            animate={{ opacity: 1 }}
+                                            className="text-xs text-slate-500"
+                                        >
+                                            Nhận CV Templates và mẹo phỏng vấn miễn phí mỗi tuần.
+                                        </motion.p>
+                                    )}
+                                </AnimatePresence>
                             </div>
-                            <p className="text-xs mt-4 opacity-60">Nhận mẹo phỏng vấn mới nhất mỗi tuần.</p>
                         </div>
                     </div>
 
-                    <div className="border-t border-slate-900 pt-8 flex flex-col md:flex-row justify-between items-center text-xs font-medium opacity-60">
+                    <div className="border-t border-slate-800/50 pt-8 flex flex-col md:flex-row justify-between items-center text-sm font-medium text-slate-500">
                         <p>© 2026 Dự án EXE101 - FPT University.</p>
-                        <div className="flex gap-1 mt-2 md:mt-0">
-                            Designed with <span className="text-red-500 animate-pulse">❤️</span> by Team.
+                        <div className="flex items-center gap-1.5 mt-4 md:mt-0 bg-slate-900/50 px-4 py-2 rounded-full border border-slate-800">
+                            Designed with <span className="text-rose-500 animate-pulse inline-block mx-0.5">❤️</span> by Team AI Interviewer.
                         </div>
                     </div>
                 </div>

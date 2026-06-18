@@ -88,16 +88,25 @@ namespace AIMockInterviewer.API.Services
                 .Include(u => u.Roles)
                 .FirstOrDefaultAsync(u => u.Email == request.Email);
 
-            if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+            // Tách rõ thông báo lỗi: Email không tồn tại
+            if (user == null)
             {
-                return new AuthResponse { Success = false, Message = "Email hoặc mật khẩu không đúng." };
+                return new AuthResponse { Success = false, Message = "Email không tồn tại trong hệ thống." };
             }
 
-            // Sửa lại câu thông báo lỗi cho chuẩn xác với logic IsActive = false
+            // Tách rõ thông báo lỗi: Sai mật khẩu
+            if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+            {
+                return new AuthResponse { Success = false, Message = "Mật khẩu không chính xác." };
+            }
+
             if (user.IsActive == false)
             {
                 return new AuthResponse { Success = false, Message = "Tài khoản chưa được xác thực OTP. Vui lòng kiểm tra email." };
             }
+
+            // [THÊM MỚI] Kiểm tra xem mật khẩu có phải đang là '1' hay không
+            bool isWeakPassword = request.Password == "1";
 
             var userProfile = await _context.UserProfiles.FirstOrDefaultAsync(p => p.UserId == user.Id);
 
@@ -107,6 +116,7 @@ namespace AIMockInterviewer.API.Services
                 new Claim(ClaimTypes.Email, user.Email ?? "")
             };
 
+            // ... (Phần generate JWT token giữ nguyên)
             string userRole = null;
             if (user.Roles != null && user.Roles.Any())
             {
@@ -137,7 +147,8 @@ namespace AIMockInterviewer.API.Services
                 Token = tokenString,
                 UserId = user.Id,
                 FullName = userProfile?.FullName,
-                Role = userRole
+                Role = userRole,
+                RequirePasswordChange = isWeakPassword // [THÊM MỚI] Trả cờ về cho FE
             };
         }
 

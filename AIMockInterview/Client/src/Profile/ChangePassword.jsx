@@ -99,6 +99,9 @@ const RuleItem = ({ pass, text }) => (
 // ── Main Component ──────────────────────────────────────────────────────────
 export default function ChangePassword() {
     const navigate = useNavigate();
+    
+    // Đọc cờ ép buộc đổi mật khẩu từ localStorage
+    const isForced = localStorage.getItem('forcePasswordChange') === 'true';
 
     const [form, setForm] = useState({
         currentPassword: '',
@@ -138,8 +141,12 @@ export default function ChangePassword() {
                 newPassword: form.newPassword,
             });
             setSuccess(true);
-            // Auto redirect to profile after 2.5s
-            setTimeout(() => navigate('/profile'), 2500);
+            
+            // Xóa cờ ép buộc sau khi đổi mật khẩu thành công
+            localStorage.removeItem('forcePasswordChange');
+
+            // Chuyển về Home (nếu bị ép đổi lúc login) hoặc Profile (nếu chủ động đổi)
+            setTimeout(() => navigate(isForced ? '/' : '/profile'), 2500);
         } catch (err) {
             console.error(err);
             setError(
@@ -158,18 +165,22 @@ export default function ChangePassword() {
 
             {/* ── Navbar ── */}
             <nav className="w-full bg-white border-b border-neutral-100 py-4 px-6 flex items-center justify-between sticky top-0 z-50 shadow-sm">
-                <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
+                <div className="flex items-center gap-2 cursor-pointer" onClick={() => !isForced && navigate('/')}>
                     <div className="bg-neutral-900 p-1.5 rounded-lg text-amber-400">
                         <Crown size={20} strokeWidth={3} />
                     </div>
                     <span className="text-xl font-bold tracking-tight text-neutral-900">AI Interviewer</span>
                 </div>
-                <button
-                    onClick={() => navigate('/profile')}
-                    className="flex items-center gap-2 text-sm font-bold text-neutral-500 hover:text-neutral-900 transition-colors px-4 py-2 rounded-full hover:bg-neutral-100"
-                >
-                    <ArrowLeft size={16} /> Quay lại hồ sơ
-                </button>
+                
+                {/* Ẩn nút quay lại nếu người dùng đang bị ép buộc đổi mật khẩu */}
+                {!isForced && (
+                    <button
+                        onClick={() => navigate('/profile')}
+                        className="flex items-center gap-2 text-sm font-bold text-neutral-500 hover:text-neutral-900 transition-colors px-4 py-2 rounded-full hover:bg-neutral-100"
+                    >
+                        <ArrowLeft size={16} /> Quay lại hồ sơ
+                    </button>
+                )}
             </nav>
 
             {/* ── Main ── */}
@@ -186,7 +197,11 @@ export default function ChangePassword() {
                             <KeyRound size={30} className="text-amber-400" />
                         </div>
                         <h1 className="text-3xl font-black text-neutral-900 mb-1">Đổi mật khẩu</h1>
-                        <p className="text-neutral-500 font-medium text-sm">Bảo vệ tài khoản bằng mật khẩu mạnh và riêng tư.</p>
+                        <p className="text-neutral-500 font-medium text-sm">
+                            {isForced 
+                                ? "Vì lý do bảo mật, vui lòng tạo mật khẩu mới an toàn hơn để tiếp tục." 
+                                : "Bảo vệ tài khoản bằng mật khẩu mạnh và riêng tư."}
+                        </p>
                     </motion.div>
 
                     <AnimatePresence mode="wait">
@@ -203,7 +218,7 @@ export default function ChangePassword() {
                                 </div>
                                 <h2 className="text-2xl font-black text-neutral-900 mb-2">Thành công!</h2>
                                 <p className="text-neutral-500 font-medium mb-1">Mật khẩu của bạn đã được cập nhật an toàn.</p>
-                                <p className="text-xs text-neutral-400 font-medium">Đang chuyển về trang hồ sơ…</p>
+                                <p className="text-xs text-neutral-400 font-medium">Đang chuyển hướng…</p>
                             </motion.div>
                         ) : (
                             /* ── FORM STATE ── */
@@ -291,17 +306,19 @@ export default function ChangePassword() {
                                         )}
                                     </button>
 
-                                    {/* Forgot password link */}
-                                    <p className="text-center text-sm text-neutral-400 font-medium">
-                                        Không nhớ mật khẩu cũ?{' '}
-                                        <button
-                                            type="button"
-                                            onClick={() => navigate('/auth/forgot-password')}
-                                            className="text-amber-600 hover:text-amber-700 font-bold underline underline-offset-4 transition-colors"
-                                        >
-                                            Dùng tính năng Quên mật khẩu
-                                        </button>
-                                    </p>
+                                    {/* Forgot password link - Có thể cân nhắc ẩn nếu đang bị isForced */}
+                                    {!isForced && (
+                                        <p className="text-center text-sm text-neutral-400 font-medium">
+                                            Không nhớ mật khẩu cũ?{' '}
+                                            <button
+                                                type="button"
+                                                onClick={() => navigate('/auth/forgot-password')}
+                                                className="text-amber-600 hover:text-amber-700 font-bold underline underline-offset-4 transition-colors"
+                                            >
+                                                Dùng tính năng Quên mật khẩu
+                                            </button>
+                                        </p>
+                                    )}
                                 </form>
 
                                 {/* Security footer */}
