@@ -249,6 +249,7 @@ namespace AIMockInterviewer.API.Services
                 session.Status = "Completed";
                 session.EndedAt = DateTime.UtcNow;
 
+                // 1. Tạo và LƯU bảng cha trước
                 var feedback = new InterviewFeedback
                 {
                     InterviewSessionId = session.Id,
@@ -256,13 +257,15 @@ namespace AIMockInterviewer.API.Services
                     GeneralComment = evaluation.generalComment
                 };
                 _context.InterviewFeedbacks.Add(feedback);
+                await _context.SaveChangesAsync(); // <--- THÊM DÒNG NÀY: Lưu để database sinh ra feedback.Id thật
 
+                // 2. Sau khi đã có feedback.Id thật, mới tiến hành tạo các criteria
                 var criteriaList = new List<FeedbackCriterion>();
                 foreach (var crit in evaluation.criteria)
                 {
                     var newCrit = new FeedbackCriterion
                     {
-                        FeedbackId = feedback.Id,
+                        FeedbackId = feedback.Id, // Lúc này feedback.Id đã hợp lệ
                         CriteriaName = crit.name,
                         Score = crit.score,
                         Comment = crit.comment
@@ -270,7 +273,7 @@ namespace AIMockInterviewer.API.Services
                     _context.FeedbackCriteria.Add(newCrit);
                     criteriaList.Add(newCrit);
                 }
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(); // <--- LƯU LẠI LẦN NỮA để insert danh sách criteria
 
                 // --- TÍCH HỢP ANALYTICS ĐẾM TỪ ĐỆM ---
                 var userOnlyMessages = fullTranscriptList
