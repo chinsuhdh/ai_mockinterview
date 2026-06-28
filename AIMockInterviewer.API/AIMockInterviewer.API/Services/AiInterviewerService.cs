@@ -1,24 +1,20 @@
-﻿using System.Text;
-using System.Text.Json;
+﻿using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
 
 namespace AIMockInterviewer.API.Services
 {
     public class AiInterviewerService
     {
-        private readonly HttpClient _httpClient;
-        private readonly string _apiKey;
+        private readonly IChatCompletionService _chatCompletionService;
 
-        public AiInterviewerService(HttpClient httpClient, IConfiguration configuration)
+        public AiInterviewerService(IChatCompletionService chatCompletionService)
         {
-            _httpClient = httpClient;
-            _apiKey = configuration["Gemini:ApiKey"] ?? throw new Exception("Thiếu API Key!");
+            _chatCompletionService = chatCompletionService;
         }
 
         public async Task<string> GenerateInterviewResponse(string userMessage, string jobDescription, List<string> history, string language = "vi")
         {
-            var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={_apiKey}";
-
-            string systemInstruction = $@"
+            var chatHistory = new ChatHistory($@"
                 You are a professional Interviewer for: '{jobDescription}'.
                 
                 *** MISSION ***:
@@ -32,71 +28,81 @@ namespace AIMockInterviewer.API.Services
                     ""feedback"": ""(Tiếng Việt) Nhận xét ngắn gọn về câu trả lời..."",
                     ""nextQuestion"": ""(Tiếng Việt) Câu hỏi tiếp theo..."",
                     ""nextQuestionEn"": ""(English) The exact English translation...""
-                }}";
+                }}");
 
-            string context = string.Join("\n", history);
-            string fullPrompt = $"{systemInstruction}\n\n[Chat History]:\n{context}\n\n[Candidate Answer]: {userMessage}\n\n[AI Response (JSON)]:";
+            foreach (var msg in history)
+            {
+                if (msg.StartsWith("User:"))
+                    chatHistory.AddUserMessage(msg.Replace("User:", "").Trim());
+                else if (msg.StartsWith("AI:"))
+                    chatHistory.AddAssistantMessage(msg.Replace("AI:", "").Trim());
+                else
+                    chatHistory.AddSystemMessage(msg);
+            }
 
-            return await CallGeminiApi(url, fullPrompt);
+            chatHistory.AddUserMessage(userMessage);
+
+            var executionSettings = new PromptExecutionSettings
+            {
+                ExtensionData = new Dictionary<string, object>
+                {
+                    { "response_mime_type", "application/json" }
+                }
+            };
+
+            var response = await _chatCompletionService.GetChatMessageContentAsync(chatHistory, executionSettings);
+            return response.Content ?? "{}";
         }
 
-        // Đổi tên tham số từ jobDescription thành contextData
         public async Task<string> AnalyzeJdAndCreateQuestions(string contextData)
         {
-            var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={_apiKey}";
+            var chatHistory = new ChatHistory();
 
-            // Sửa lại prompt một chút để phù hợp với cả 2 trường hợp
-            string prompt = $@"
-                Act as a Senior Recruiter. Analyze the following context (JD and/or CV): '{contextData}'.
-                Task: Create exactly 8 to 10 interview questions based strictly on the provided context.
-                - 2 Ice-breaking
-                - 3 Behavioral
-                - 3-5 Technical or Experience-based questions specific to the provided text.
-                
-                *** OUTPUT FORMAT (STRICT JSON ARRAY) ***:
-                [
-                    {{ ""vi"": ""Câu hỏi 1..."", ""en"": ""Question 1..."" }},
-                    {{ ""vi"": ""Câu hỏi 2..."", ""en"": ""Question 2..."" }}
-                ]";
+            // Đưa toàn bộ context vào UserMessage thay vì constructor (System)
+            chatHistory.AddUserMessage($@"
+        Act as a Senior Recruiter. Analyze the following context (JD and/or CV): '{contextData}'.
+        Task: Create exactly 8 to 10 interview questions based strictly on the provided context.
+        - 2 Ice-breaking
+        - 3 Behavioral
+        - 3-5 Technical or Experience-based questions specific to the provided text.
+        
+        *** OUTPUT FORMAT (STRICT JSON ARRAY) ***:
+        [
+            {{ ""vi"": ""Câu hỏi 1..."", ""en"": ""Question 1..."" }},
+            {{ ""vi"": ""Câu hỏi 2..."", ""en"": ""Question 2..."" }}
+        ]");
 
-            return await CallGeminiApi(url, prompt);
+            var executionSettings = new PromptExecutionSettings
+            {
+                ExtensionData = new Dictionary<string, object> { { "response_mime_type", "application/json" } }
+            };
+
+            var response = await _chatCompletionService.GetChatMessageContentAsync(chatHistory, executionSettings);
+            return response.Content ?? "[]";
         }
 
         public async Task<string> GetHintForQuestion(string currentQuestion, string jobDescription)
         {
-            var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={_apiKey}";
-            string prompt = $@"You are an Interview Mentor. Candidate is stuck on: '{currentQuestion}' for JD: '{jobDescription}'. Provide a hint in JSON format: {{ ""hintVi"": ""..."", ""hintEn"": ""..."" }}";
-            return await CallGeminiApi(url, prompt);
-        }
+            var chatHistory = new ChatHistory();
 
-        private async Task<string> CallGeminiApi(string url, string prompt)
-        {
-            var requestBody = new
+            // Tương tự, chuyển prompt thành UserMessage
+            chatHistory.AddUserMessage($@"
+        You are an Interview Mentor. Candidate is stuck on: '{currentQuestion}' for JD: '{jobDescription}'. 
+        Provide a hint in JSON format: 
+        {{ ""hintVi"": ""..."", ""hintEn"": ""..."" }}");
+
+            var executionSettings = new PromptExecutionSettings
             {
-                contents = new[] { new { parts = new[] { new { text = prompt } } } },
-                // Ép Gemini trả về JSON chuẩn
-                generationConfig = new { responseMimeType = "application/json" }
+                ExtensionData = new Dictionary<string, object> { { "response_mime_type", "application/json" } }
             };
 
-            var jsonContent = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
-            var response = await _httpClient.PostAsync(url, jsonContent);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var error = await response.Content.ReadAsStringAsync();
-                throw new Exception($"Gemini API Error: {error}");
-            }
-
-            var responseString = await response.Content.ReadAsStringAsync();
-            using var doc = JsonDocument.Parse(responseString);
-            return doc.RootElement.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString() ?? "";
+            var response = await _chatCompletionService.GetChatMessageContentAsync(chatHistory, executionSettings);
+            return response.Content ?? "{}";
         }
 
         public async Task<string> EvaluateInterviewAsync(string jobDescription, List<string> history)
         {
-            var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={_apiKey}";
-
-            string systemInstruction = $@"
+            var chatHistory = new ChatHistory($@"
                 You are an Expert HR Manager. Review the entire interview transcript for the JD: '{jobDescription}'.
                 
                 *** MISSION ***:
@@ -113,27 +119,38 @@ namespace AIMockInterviewer.API.Services
                             ""comment"": ""(Tiếng Việt) Nhận xét và gợi ý cải thiện cho tiêu chí này...""
                         }}
                     ]
-                }}";
+                }}");
 
-            string context = string.Join("\n", history);
-            string fullPrompt = $"{systemInstruction}\n\n[Interview Transcript]:\n{context}\n\n[HR Evaluation (JSON)]:";
+            chatHistory.AddUserMessage($"[Interview Transcript]:\n{string.Join("\n", history)}");
 
-            return await CallGeminiApi(url, fullPrompt);
+            var executionSettings = new PromptExecutionSettings
+            {
+                ExtensionData = new Dictionary<string, object> { { "response_mime_type", "application/json" } }
+            };
+
+            var response = await _chatCompletionService.GetChatMessageContentAsync(chatHistory, executionSettings);
+            return response.Content ?? "{}";
         }
 
         public async Task<string> GetGeneralChatResponse(string userMessage)
         {
-            var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={_apiKey}";
-
-            string prompt = $@"
-                Bạn là trợ lý ảo AI của hệ thống Mock Interview. Hãy trả lời ngắn gọn, thân thiện, và hữu ích cho câu hỏi sau: '{userMessage}'
+            var chatHistory = new ChatHistory($@"
+                Bạn là trợ lý ảo AI của hệ thống Mock Interview. Hãy trả lời ngắn gọn, thân thiện, và hữu ích.
                 
                 *** OUTPUT FORMAT (JSON ONLY) ***:
                 {{
                     ""reply"": ""(Tiếng Việt) Câu trả lời của bạn...""
-                }}";
+                }}");
 
-            return await CallGeminiApi(url, prompt);
+            chatHistory.AddUserMessage(userMessage);
+
+            var executionSettings = new PromptExecutionSettings
+            {
+                ExtensionData = new Dictionary<string, object> { { "response_mime_type", "application/json" } }
+            };
+
+            var response = await _chatCompletionService.GetChatMessageContentAsync(chatHistory, executionSettings);
+            return response.Content ?? "{}";
         }
     }
 }

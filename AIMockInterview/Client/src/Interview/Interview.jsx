@@ -1,12 +1,16 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { 
     Send, Bot, User, Mic, 
     MessageSquare, StopCircle, Loader2, CheckCircle2, ChevronRight,
-    ArrowLeft, Sparkles, X, Crown, FileText, Zap, Lock, Cpu, Briefcase
+    ArrowLeft, Sparkles, X, Crown, FileText, Zap, Lock, Cpu, Briefcase,
+    Activity
 } from 'lucide-react';
+// eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from 'framer-motion';
+import * as signalR from '@microsoft/signalr';
 
 const StepIndicator = ({ step, language }) => {
     const steps = [
@@ -92,32 +96,105 @@ export default function Interview() {
     const recognitionRef = useRef(null);
     const synthRef = useRef(typeof window !== 'undefined' ? window.speechSynthesis : null);
 
-    // Resume Session Logic
+    // State và Ref cho SignalR & MediaRecorder
+    const [hubConnection, setHubConnection] = useState(null);
+    const mediaRecorderRef = useRef(null);
+    const audioChunksRef = useRef([]);
+    const [liveAnalytics, setLiveAnalytics] = useState(null);
+
+    // Logic kết nối SignalR khi vào chế độ Voice
     useEffect(() => {
-        if (resumeSessionId) {
-            const loadExistingSession = async () => {
-                setLoading(true);
-                try {
-                    const res = await api.get(`/api/Interview/${resumeSessionId}/resume`);
-                    if (res.data.success) {
-                        setSessionId(res.data.sessionId);
-                        const historyMessages = res.data.messages.map(m => ({
-                            sender: m.sender,
-                            content: m.content
-                        }));
-                        setMessages(historyMessages);
-                        setStep(3); 
-                    }
-                } catch (err) {
-                    console.error("Lỗi Resume:", err);
-                    alert("Phiên phỏng vấn đã kết thúc hoặc không tồn tại.");
-                    window.location.href = '/dashboard';
-                }
+        if (step === 3 && mode === 'voice' && sessionId) {
+            const token = localStorage.getItem('token'); 
+
+            const hubUrl = import.meta.env.VITE_API_BASE_URL 
+            ? `${import.meta.env.VITE_API_BASE_URL}/interviewHub` 
+            : 'http://localhost:7064/interviewHub';
+
+            const connection = new signalR.HubConnectionBuilder()
+                .withUrl(hubUrl, {
+                    accessTokenFactory: () => token
+                })
+                .withAutomaticReconnect()
+                .build();
+
+            connection.on("OnUserSpeechRecognized", (text) => {
+                setMessages(prev => [...prev, { sender: 'User', content: text }]);
+            });
+
+            // Lắng nghe phân tích Soft-Skill từ Backend
+            connection.on("ReceiveSpeechAnalytics", (analyticsData) => {
+                console.log("Nhận dữ liệu Soft-Skill:", analyticsData);
+                setLiveAnalytics(analyticsData);
+                
+                // Tự động ẩn Popup phân tích sau 8 giây để UI không bị rối
+                setTimeout(() => {
+                    setLiveAnalytics(null);
+                }, 8000);
+            });
+
+            connection.on("ReceiveAiMessage", (text) => {
+                setMessages(prev => [...prev, { sender: 'AI', content: text }]);
+            });
+
+            connection.on("ReceiveAiVoice", (base64Audio) => {
+                const audioSrc = `data:audio/mp3;base64,${base64Audio}`;
+                const audio = new Audio(audioSrc);
+                
+                setIsSpeaking(true);
+                audio.play();
+                audio.onended = () => setIsSpeaking(false);
+            });
+
+            connection.on("OnError", (errorMsg) => {
+                console.error("SignalR Error:", errorMsg);
+                alert("Lỗi kết nối Voice: " + errorMsg);
                 setLoading(false);
+            });
+
+            connection.start()
+                .then(() => {
+                    console.log("SignalR Connected!");
+                    setHubConnection(connection);
+                })
+                .catch(err => console.error("SignalR Connection Error: ", err));
+
+            return () => {
+                connection.stop();
             };
-            loadExistingSession();
         }
-    }, [resumeSessionId]);
+    }, [step, mode, sessionId]);
+
+    // Resume Session Logic
+    // Resume Session Logic
+useEffect(() => {
+    if (resumeSessionId) {
+        const loadExistingSession = async () => {
+            setLoading(true);
+            try {
+                const res = await api.get(`/api/Interview/${resumeSessionId}/resume`);
+                if (res.data.success) {
+                    // Trích xuất data từ BaseResponse của Backend
+                    const responseData = res.data.data;
+                    
+                    setSessionId(responseData.sessionId);
+                    const historyMessages = responseData.messages.map(m => ({
+                        sender: m.sender,
+                        content: m.content
+                    }));
+                    setMessages(historyMessages);
+                    setStep(3); 
+                }
+            } catch (err) {
+                console.error("Lỗi Resume:", err);
+                alert("Phiên phỏng vấn đã kết thúc hoặc không tồn tại.");
+                window.location.href = '/dashboard';
+            }
+            setLoading(false);
+        };
+        loadExistingSession();
+    }
+}, [resumeSessionId]);
 
     useEffect(() => {
         const loadVoices = () => window.speechSynthesis.getVoices();
@@ -133,82 +210,131 @@ export default function Interview() {
     }, [messages]);
 
     const handleStart = async () => {
-        // Kiểm tra phải có ít nhất CV hoặc JD
-        if (!jdText.trim() && !cvFile && !jdFile) {
-            return alert(language === 'en' 
-                ? "Please provide at least a CV or a Job Description to start!" 
-                : "Vui lòng cung cấp ít nhất CV hoặc Mô tả công việc (JD) để bắt đầu!");
-        }
+    if (!jdText.trim() && !cvFile && !jdFile) {
+        return alert(language === 'en' 
+            ? "Please provide at least a CV or a Job Description to start!" 
+            : "Vui lòng cung cấp ít nhất CV hoặc Mô tả công việc (JD) để bắt đầu!");
+    }
 
-        const sessions = JSON.parse(localStorage.getItem('interview_sessions') || '[]');
-        if (userPlan === 'free' && sessions.length >= 3) {
-            alert(language === 'en' 
-                ? "You have reached the limit of 3 free interviews. Please upgrade to Pro!" 
-                : "Bạn đã hết 3 lượt phỏng vấn miễn phí. Vui lòng nâng cấp gói Pro để tiếp tục!");
-            window.location.href = '/profile';
+    const sessions = JSON.parse(localStorage.getItem('interview_sessions') || '[]');
+    if (userPlan === 'free' && sessions.length >= 3) {
+        alert(language === 'en' 
+            ? "You have reached the limit of 3 free interviews. Please upgrade to Pro!" 
+            : "Bạn đã hết 3 lượt phỏng vấn miễn phí. Vui lòng nâng cấp gói Pro để tiếp tục!");
+        window.location.href = '/profile';
+        return;
+    }
+
+    setLoading(true);
+    try {
+        const formData = new FormData();
+        
+        let generatedTitle = "Phỏng vấn Đánh giá năng lực";
+        if (jdFile) generatedTitle = jdFile.name;
+        else if (jdText) generatedTitle = jdText.substring(0, 40) + "...";
+        else if (cvFile) generatedTitle = "Phỏng vấn CV: " + cvFile.name;
+
+        formData.append('JdTitle', generatedTitle); 
+        if (jdText.trim()) formData.append('JdContent', jdText);
+        if (jdFile) formData.append('JdFile', jdFile);
+        if (cvFile) formData.append('CvFile', cvFile);
+        formData.append('Language', language);
+
+        const res = await api.post('/api/Interview/start', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        
+        // Trích xuất data từ BaseResponse của Backend
+        const responseData = res.data.data; 
+
+        setSessionId(responseData.sessionId);
+        setMessages([{ 
+            sender: 'AI', 
+            content: responseData.firstQuestion,    
+            contentEn: responseData.firstQuestionEn  
+        }]);
+        
+        setStep(2); 
+    } catch (err) {
+        console.error(err);
+        alert('Lỗi khởi tạo phiên: ' + (err.response?.data?.message || err.message));
+    }
+    setLoading(false);
+};
+    const startListening = async () => {
+        // Dự phòng cho chế độ Text Chat (dùng Mic gõ chữ hộ)
+        if (mode === 'chat') {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) return alert("Trình duyệt không hỗ trợ Web Speech API.");
+            const recognition = new SpeechRecognition();
+            recognition.lang = language === 'en' ? 'en-US' : 'vi-VN'; 
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            recognition.onstart = () => setIsRecording(true);
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                handleSendMessage(transcript); 
+            };
+            recognition.onerror = () => setIsRecording(false);
+            recognition.onend = () => setIsRecording(false);
+            
+            recognition.start();
+            recognitionRef.current = recognition;
             return;
         }
 
-        setLoading(true);
+        // Logic dành riêng cho Real-time Voice (SignalR + MediaRecorder)
         try {
-            const formData = new FormData();
-            
-            // Tạo Title tự động dựa trên dữ liệu đầu vào
-            let generatedTitle = "Phỏng vấn Đánh giá năng lực";
-            if (jdFile) generatedTitle = jdFile.name;
-            else if (jdText) generatedTitle = jdText.substring(0, 40) + "...";
-            else if (cvFile) generatedTitle = "Phỏng vấn CV: " + cvFile.name;
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
 
-            formData.append('JdTitle', generatedTitle); 
-            if (jdText.trim()) formData.append('JdContent', jdText);
-            if (jdFile) formData.append('JdFile', jdFile);
-            if (cvFile) formData.append('CvFile', cvFile);
-            formData.append('Language', language);
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunksRef.current.push(event.data);
+                }
+            };
 
-            const res = await api.post('/api/Interview/start', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-            
-            setSessionId(res.data.sessionId);
-            setMessages([{ 
-                sender: 'AI', 
-                content: res.data.firstQuestion,    
-                contentEn: res.data.firstQuestionEn  
-            }]);
-            
-            setStep(2); 
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                
+                // Convert Blob to Base64
+                const reader = new FileReader();
+                reader.readAsDataURL(audioBlob);
+                reader.onloadend = async () => {
+                    const base64String = reader.result.split(',')[1];
+                    
+                    // Gửi Audio qua SignalR
+                    if (hubConnection && hubConnection.state === signalR.HubConnectionState.Connected) {
+                        setLoading(true);
+                        await hubConnection.invoke("ProcessUserAudio", sessionId, base64String, language);
+                        setLoading(false);
+                    }
+                };
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
         } catch (err) {
-            console.error(err);
-            alert('Lỗi khởi tạo phiên: ' + (err.response?.data?.message || err.message));
+            console.error("Lỗi truy cập Micro:", err);
+            alert("Không thể truy cập Microphone. Vui lòng kiểm tra quyền trình duyệt.");
         }
-        setLoading(false);
-    };
-
-    const startListening = () => {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            return alert("Trình duyệt của bạn không hỗ trợ chức năng nhận diện giọng nói. Hãy thử Google Chrome.");
-        }
-
-        const recognition = new SpeechRecognition();
-        recognition.lang = 'vi-VN'; 
-        recognition.interimResults = false;
-        recognition.maxAlternatives = 1;
-
-        recognition.onstart = () => setIsRecording(true);
-        recognition.onresult = (event) => {
-            const transcript = event.results[0][0].transcript;
-            handleSendMessage(transcript); 
-        };
-        recognition.onerror = () => setIsRecording(false);
-        recognition.onend = () => setIsRecording(false);
-        
-        recognition.start();
-        recognitionRef.current = recognition;
     };
 
     const stopListening = () => {
-        if (recognitionRef.current) recognitionRef.current.stop();
+        if (mode === 'chat') {
+            if (recognitionRef.current) recognitionRef.current.stop();
+            return;
+        }
+
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+            // Dừng các track của stream để tắt đèn đỏ (Mic) trên trình duyệt
+            mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        }
     };
 
     const speakText = (text) => {
@@ -232,97 +358,122 @@ export default function Interview() {
     };
 
     const endSession = async () => {
+        // Nếu chưa có sessionId (đang ở bước 1) mà bấm kết thúc thì về thẳng Dashboard
+        if (!sessionId) {
+            window.location.href = '/dashboard';
+            return;
+        }
+
+        // Tắt Microphone/nhận diện giọng nói ngay lập tức để giải phóng tài nguyên
+        stopListening();
+        if (synthRef.current && synthRef.current.speaking) {
+            synthRef.current.cancel();
+            setIsSpeaking(false);
+        }
+
         setLoading(true);
         try {
-            await api.post(`/api/Interview/${sessionId}/end`);
+            const res = await api.post(`/api/Interview/${sessionId}/end`);
+            
+            // KIỂM TRA LOGIC BACKEND: Nếu backend trả về success = false (VD: Phỏng vấn quá ngắn)
+            if (res.data && res.data.success === false) {
+                alert(res.data.message); // Báo lỗi "Buổi phỏng vấn quá ngắn..."
+                window.location.href = '/dashboard'; // Quay về dashboard thay vì vào trang detail
+                return;
+            }
+
+            // Chấm điểm thành công mới cho sang trang chi tiết
             window.location.href = `/dashboard/session/${sessionId}`; 
         } catch (err) {
             console.error("Lỗi khi kết thúc phiên:", err);
+            alert("Có lỗi xảy ra khi AI chấm điểm: " + (err.response?.data?.message || err.message));
             window.location.href = '/dashboard';
         }
         setLoading(false);
     };
 
     const handleSendMessage = async (text) => {
-        if (!text || !text.trim() || isFinished) return;
-        
-        setMessages(prev => [...prev, { sender: 'User', content: text }]);
-        setLoading(true);
-        setHint(null);
+    if (!text || !text.trim() || isFinished) return;
+    
+    setMessages(prev => [...prev, { sender: 'User', content: text }]);
+    setLoading(true);
+    setHint(null);
 
-        const aiMessageCount = messages.filter(m => m.sender === 'AI').length;
+    const aiMessageCount = messages.filter(m => m.sender === 'AI').length;
 
-        if (userPlan === 'free' && aiMessageCount >= 8) {
-            setLoading(false);
-            setIsFinished(true);
-            const limitMsg = language === 'en' 
-                ? "You have reached the 8-question limit for the Free plan. Please upgrade to Pro for unlimited questions."
-                : "Bạn đã đạt giới hạn 8 câu hỏi của gói Free. Vui lòng nâng cấp Pro để tiếp tục.";
-            
-            setMessages(prev => [...prev, { 
-                sender: 'AI', 
-                content: limitMsg,
-                isLimitAlert: true
-            }]);
-            return;
-        }
-
-        try {
-            const res = await api.post('/api/Interview/chat', { 
-                sessionId, 
-                userMessage: text,
-                jobDescription: jdText,
-                language: language,
-                model: selectedModel,
-                history: messages.map(m => `${m.sender}: ${m.content}`)
-            });
-
-            const { response, feedback, nextQuestionEn } = res.data;
-            
-            setMessages(prev => [...prev, { 
-                sender: 'AI', 
-                content: response,
-                feedback: feedback 
-            }]);
-            
-            if (mode === 'voice') {
-                const textToSpeak = nextQuestionEn || response;
-                speakText(textToSpeak);
-            }
-            
-        } catch (err) { 
-            console.error("Chat Error:", err);
-            setMessages(prev => [...prev, { sender: 'AI', content: "Xin lỗi, đã có lỗi kết nối." }]);
-        }
+    if (userPlan === 'free' && aiMessageCount >= 8) {
         setLoading(false);
-    };
+        setIsFinished(true);
+        const limitMsg = language === 'en' 
+            ? "You have reached the 8-question limit for the Free plan. Please upgrade to Pro for unlimited questions."
+            : "Bạn đã đạt giới hạn 8 câu hỏi của gói Free. Vui lòng nâng cấp Pro để tiếp tục.";
+        
+        setMessages(prev => [...prev, { 
+            sender: 'AI', 
+            content: limitMsg,
+            isLimitAlert: true
+        }]);
+        return;
+    }
 
-    const handleGetHint = async () => {
-        const lastAiMsg = [...messages].reverse().find(m => m.sender === 'AI');
-        if (!lastAiMsg) return;
+    try {
+        const res = await api.post('/api/Interview/chat', { 
+            sessionId, 
+            userMessage: text,
+            jobDescription: jdText,
+            language: language,
+            model: selectedModel,
+            history: messages.map(m => `${m.sender}: ${m.content}`)
+        });
 
-        setLoadingHint(true);
-        try {
-            const res = await api.post('/api/Interview/get-hint', {
-                sessionId: sessionId,
-                currentQuestion: lastAiMsg.content,
-                jobDescription: jdText,
-                model: selectedModel
-            });
-            
-            const hintData = res.data;
-            let hintText = language === 'en' 
-                ? (hintData.hintEn || hintData.hintVi || "No hint available.") 
-                : (hintData.hintVi || hintData.hintEn || "Không có gợi ý.");
-
-            setHint(hintText); 
-
-        } catch (err) {
-            console.error("Lỗi lấy gợi ý:", err);
-            setHint(language === 'en' ? "Failed to get hint." : "Không thể lấy gợi ý lúc này.");
+        // Trích xuất data từ BaseResponse của Backend
+        const { response, feedback, nextQuestionEn } = res.data.data; 
+        
+        setMessages(prev => [...prev, { 
+            sender: 'AI', 
+            content: response,
+            feedback: feedback 
+        }]);
+        
+        // Text to speech phụ khi đang ở mode chat mà người dùng bấm muốn đọc (nếu có)
+        if (mode === 'chat') {
+            const textToSpeak = nextQuestionEn || response;
+            speakText(textToSpeak);
         }
-        setLoadingHint(false);
-    };
+        
+    } catch (err) { 
+        console.error("Chat Error:", err);
+        setMessages(prev => [...prev, { sender: 'AI', content: "Xin lỗi, đã có lỗi kết nối." }]);
+    }
+    setLoading(false);
+};
+    const handleGetHint = async () => {
+    const lastAiMsg = [...messages].reverse().find(m => m.sender === 'AI');
+    if (!lastAiMsg) return;
+
+    setLoadingHint(true);
+    try {
+        const res = await api.post('/api/Interview/get-hint', {
+            sessionId: sessionId,
+            currentQuestion: lastAiMsg.content,
+            jobDescription: jdText,
+            model: selectedModel
+        });
+        
+        // Trích xuất data từ BaseResponse của Backend
+        const hintData = res.data.data; 
+        let hintText = language === 'en' 
+            ? (hintData.hintEn || hintData.hintVi || "No hint available.") 
+            : (hintData.hintVi || hintData.hintEn || "Không có gợi ý.");
+
+        setHint(hintText); 
+
+    } catch (err) {
+        console.error("Lỗi lấy gợi ý:", err);
+        setHint(language === 'en' ? "Failed to get hint." : "Không thể lấy gợi ý lúc này.");
+    }
+    setLoadingHint(false);
+};
 
     if (step === 1) {
         return (
@@ -726,6 +877,53 @@ export default function Interview() {
             <div className="bg-white border-t border-neutral-200 p-4 md:p-6 pb-6 relative z-10">
                 <div className="max-w-3xl mx-auto flex flex-col gap-3 relative">
                     
+                    {/* KHỐI CODE MỚI: Popup Real-time Soft-Skill Analytics */}
+                    <AnimatePresence>
+                        {liveAnalytics && (
+                            <motion.div 
+                                initial={{ opacity: 0, y: 10, scale: 0.98 }} 
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: 5, scale: 0.98 }}
+                                className="absolute bottom-[calc(100%+1rem)] right-0 w-full md:w-80 bg-white border border-blue-200 p-4 rounded-2xl text-sm shadow-xl shadow-blue-500/10 z-20"
+                            >
+                                <button onClick={() => setLiveAnalytics(null)} className="absolute top-3 right-3 text-neutral-400 hover:text-neutral-700 transition-colors bg-neutral-50 rounded-full p-1 shadow-sm">
+                                    <X size={14} />
+                                </button>
+                                <div className="flex gap-3">
+                                    <div className={`rounded-full p-2 shrink-0 h-fit ${liveAnalytics.totalFillerWords > 3 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                                        <Activity size={18} />
+                                    </div>
+                                    <div>
+                                        <p className="font-black text-neutral-900 mb-0.5 text-xs uppercase tracking-wider">
+                                            Phân tích giọng nói
+                                        </p>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="font-semibold text-neutral-700 text-xs">Từ đệm phát hiện:</span>
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${liveAnalytics.totalFillerWords > 3 ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-green-50 text-green-600 border border-green-100'}`}>
+                                                {liveAnalytics.totalFillerWords} từ
+                                            </span>
+                                        </div>
+                                        <p className="font-medium leading-relaxed text-xs text-neutral-500">
+                                            {liveAnalytics.evaluation}
+                                        </p>
+                                        
+                                        {/* Hiển thị chi tiết các từ đệm bị lặp */}
+                                        {Object.keys(liveAnalytics.details || {}).length > 0 && (
+                                            <div className="mt-2 flex flex-wrap gap-1">
+                                                {Object.entries(liveAnalytics.details).map(([word, count]) => (
+                                                    <span key={word} className="text-[9px] font-semibold bg-neutral-100 text-neutral-600 px-1.5 py-0.5 rounded">
+                                                        "{word}": {count}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                    {/* END KHỐI CODE MỚI */}
+
                     <AnimatePresence>
                         {hint && (
                             <motion.div 

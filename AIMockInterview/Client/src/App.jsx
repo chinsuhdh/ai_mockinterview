@@ -41,7 +41,7 @@ function App() {
             try {
                 // Nhớ đổi BASE_URL backend cho phù hợp với môi trường của bạn 
                 // Có thể cấu hình trong file .env (VITE_API_URL)
-                const apiUrl = import.meta.env.VITE_API_URL || 'https://your-render-backend-url.com';
+                const apiUrl = import.meta.env.VITE_API_URL; //|| 'https://your-render-backend-url.com';
                 
                 await axios.post(`${apiUrl}/api/Tracking/record`);
             } catch (error) {

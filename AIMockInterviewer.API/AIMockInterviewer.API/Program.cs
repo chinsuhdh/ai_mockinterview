@@ -1,10 +1,12 @@
 ﻿using AIMockInterviewer.API.Interfaces;
 using AIMockInterviewer.API.Models;
 using AIMockInterviewer.API.Services;
+using AIMockInterviewer.API.Hubs; // --- THÊM SIGNALR: Nhớ using namespace chứa InterviewHub ---
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Microsoft.SemanticKernel;
 using System.Security.Claims;
 using System.Text;
 
@@ -19,17 +21,31 @@ namespace AIMockInterviewer.API
             builder.Services.AddHttpContextAccessor();
             builder.Services.AddDbContext<AppDbContext>();
 
+            // Khởi tạo In-Memory Cache để lưu trữ Chat History trên RAM
+            builder.Services.AddMemoryCache();
+
             builder.Services.AddScoped<IEmailService, EmailService>();
             builder.Services.AddScoped<IAuthService, AuthService>();
-            builder.Services.AddHttpClient<AiInterviewerService>();
+
+            // Cấu hình Semantic Kernel cho Gemini
+            var geminiApiKey = builder.Configuration["Gemini:ApiKey"]
+                ?? throw new Exception("Thiếu cấu hình Gemini:ApiKey!");
+
+            builder.Services.AddKernel()
+                .AddGoogleAIGeminiChatCompletion(
+                    modelId: "gemini-2.5-flash",
+                    apiKey: geminiApiKey
+                );
+
             builder.Services.AddScoped<AiInterviewerService>();
             builder.Services.AddScoped<IPaymentService, PayOsService>();
             builder.Services.AddScoped<IInterviewService, InterviewService>();
             builder.Services.AddScoped<IUserService, UserService>();
             builder.Services.AddScoped<IAdminService, AdminService>();
             builder.Services.AddHostedService<TransactionCleanupService>();
-            // ĐÃ THÊM DÒNG NÀY ĐỂ FIX LỖI DI CHO PDFREPORTSERVICE
             builder.Services.AddScoped<PdfReportService>();
+            builder.Services.AddScoped<IAudioProcessingService, AudioProcessingService>();
+            builder.Services.AddScoped<InterviewAnalyticsService>();
 
             builder.Services.AddHttpClient();
             builder.Services.AddSingleton<IVisitorTrackingService, VisitorTrackingService>();
@@ -41,7 +57,7 @@ namespace AIMockInterviewer.API
                         .WithOrigins("http://localhost:5173", "http://localhost:5174", "https://ai-mockinterview-chinsuhdhs-projects.vercel.app")
                         .AllowAnyMethod()
                         .AllowAnyHeader()
-                        .AllowCredentials());
+                        .AllowCredentials()); // Bắt buộc AllowCredentials khi dùng SignalR
             });
 
             var jwtSettings = builder.Configuration.GetSection("JwtSettings");
@@ -63,10 +79,32 @@ namespace AIMockInterviewer.API
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]!)),
                     RoleClaimType = ClaimTypes.Role
                 };
+
+                // --- THÊM SIGNALR: Cấu hình nhận JWT token từ query string cho WebSockets ---
+                options.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = context =>
+                    {
+                        var accessToken = context.Request.Query["access_token"];
+                        var path = context.HttpContext.Request.Path;
+                        if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/interviewHub"))
+                        {
+                            context.Token = accessToken;
+                        }
+                        return Task.CompletedTask;
+                    }
+                };
             });
 
             builder.Services.AddControllers();
             builder.Services.AddEndpointsApiExplorer();
+
+            // --- THÊM SIGNALR: Đăng ký SignalR Service ---
+            builder.Services.AddSignalR(options =>
+            {
+                options.EnableDetailedErrors = true; // Bật để dễ debug trong môi trường Dev
+                options.MaximumReceiveMessageSize = 1024 * 1024 * 5; // Cấp max 5MB cho việc stream Audio
+            });
 
             builder.Services.AddSwaggerGen(c =>
             {
@@ -116,16 +154,15 @@ namespace AIMockInterviewer.API
             }
 
             app.UseRouting();
-
-
             app.UseCors("AllowAll");
-
             app.UseHttpsRedirection();
-
             app.UseAuthentication();
             app.UseAuthorization();
 
             app.MapControllers();
+
+            // --- THÊM SIGNALR: Map Endpoint cho Hub ---
+            app.MapHub<InterviewHub>("/interviewHub");
 
             app.Run();
         }

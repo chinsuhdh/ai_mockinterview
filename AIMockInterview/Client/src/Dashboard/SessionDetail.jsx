@@ -3,7 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
     ArrowLeft, Clock, Star, MessageSquare, User, Bot,
     Loader2, AlertCircle, FileText, Crown, CheckCircle2,
-    TrendingUp, ChevronDown, ChevronUp, Award, Target
+    TrendingUp, ChevronDown, ChevronUp, Award, Target,
+    Activity // <-- Đã thêm icon Activity cho phần Soft-Skill
 } from 'lucide-react';
 import { getInterviewDetail } from '../services/userService';
 
@@ -159,6 +160,10 @@ export default function SessionDetail() {
     const feedback    = session.feedback   ?? session.Feedback;
     const jd          = session.jobDescription ?? session.JobDescription ?? session.jd ?? session.Jd ?? '';
 
+    // Parse thêm trường Soft-Skill (Dự phòng cả camelCase và PascalCase)
+    const fillerWords = session.totalFillerWords ?? session.TotalFillerWords;
+    const softSkillEval = session.softSkillEvaluation ?? session.SoftSkillEvaluation;
+
     // Skill scores (optional)
     const skills = session.skillScores ?? session.SkillScores ?? null;
 
@@ -281,7 +286,7 @@ export default function SessionDetail() {
 
                         {/* Score summary */}
                         {score != null && (
-                            <div className={`flex items-center gap-5 p-6 rounded-3xl border ${scoreBg} bg-white shadow-sm`}>
+                            <div className={`flex flex-col sm:flex-row sm:items-center gap-5 p-6 rounded-3xl border ${scoreBg} bg-white shadow-sm`}>
                                 <div className={`w-20 h-20 rounded-2xl border-2 ${scoreBg} flex flex-col items-center justify-center shrink-0`}>
                                     <Award size={20} className={scoreColor} />
                                     <span className={`text-3xl font-black ${scoreColor}`}>{score}</span>
@@ -302,11 +307,38 @@ export default function SessionDetail() {
                             </div>
                         )}
 
+                        {/* KHỐI CODE MỚI: BÁO CÁO KỸ NĂNG MỀM (TỪ ĐỆM) */}
+                        {fillerWords != null && (
+                            <div className="bg-white p-6 rounded-3xl shadow-sm border border-neutral-100">
+                                <h3 className="font-black text-neutral-900 mb-4 flex items-center gap-2 text-base">
+                                    <Activity size={18} className="text-blue-500" /> Phân tích Kỹ năng mềm (Soft-Skill)
+                                </h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="bg-neutral-50 p-4 rounded-2xl border border-neutral-100">
+                                        <p className="text-xs text-neutral-500 font-bold uppercase mb-1 tracking-wider">Tổng số từ đệm</p>
+                                        <div className="flex items-baseline gap-1">
+                                            <p className={`text-3xl font-black ${fillerWords > 5 ? 'text-red-500' : 'text-green-500'}`}>
+                                                {fillerWords}
+                                            </p>
+                                            <span className="text-sm font-medium text-neutral-500 mb-1">từ</span>
+                                        </div>
+                                    </div>
+                                    <div className="bg-neutral-50 p-4 rounded-2xl border border-neutral-100">
+                                        <p className="text-xs text-neutral-500 font-bold uppercase mb-1 tracking-wider">Đánh giá độ trôi chảy</p>
+                                        <p className="text-sm font-semibold text-neutral-700 leading-relaxed">
+                                            {softSkillEval || (fillerWords > 5 ? "Tần suất dùng từ đệm khá cao. Bạn nên tập nói chậm lại và ngắt nghỉ tự nhiên." : "Tuyệt vời, phong thái nói rất dứt khoát và trôi chảy, không lạm dụng từ đệm.")}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        {/* END KHỐI CODE MỚI */}
+
                         {/* Skill bars */}
                         {skills ? (
                             <div className="bg-white p-6 rounded-3xl shadow-sm border border-neutral-100">
                                 <h3 className="font-black text-neutral-900 mb-5 flex items-center gap-2 text-base">
-                                    <Target size={18} className="text-amber-500" /> Phân tích kỹ năng
+                                    <Target size={18} className="text-amber-500" /> Phân tích kỹ năng cứng
                                 </h3>
                                 <div className="space-y-4">
                                     {Object.entries(skills).map(([key, val], i) => (

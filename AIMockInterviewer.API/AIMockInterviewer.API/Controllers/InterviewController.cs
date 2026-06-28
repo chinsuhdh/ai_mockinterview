@@ -1,6 +1,6 @@
 ﻿using AIMockInterviewer.API.DTOs;
 using AIMockInterviewer.API.Interfaces;
-using AIMockInterviewer.API.Services; // Cần thiết để gọi AiInterviewerService trực tiếp
+using AIMockInterviewer.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -13,7 +13,7 @@ namespace AIMockInterviewer.API.Controllers
     public class InterviewController : ControllerBase
     {
         private readonly IInterviewService _interviewService;
-        private readonly AiInterviewerService _aiService; // Inject AI Service cho API Hint
+        private readonly AiInterviewerService _aiService;
 
         public InterviewController(IInterviewService interviewService, AiInterviewerService aiService)
         {
@@ -33,10 +33,10 @@ namespace AIMockInterviewer.API.Controllers
             try
             {
                 var userId = GetUserId();
-                // Đã đổi object trả về để chứa cả Success property
-                dynamic result = await _interviewService.StartSessionAsync(userId, request);
+                // Sử dụng var thay vì dynamic, kết quả trả về là BaseResponse<StartInterviewData>
+                var result = await _interviewService.StartSessionAsync(userId, request);
 
-                if (result.Success == false)
+                if (!result.Success)
                 {
                     if (result.Message.Contains("hết")) return StatusCode(403, result);
                     return BadRequest(result);
@@ -46,7 +46,7 @@ namespace AIMockInterviewer.API.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { Success = false, Message = $"Lỗi hệ thống: {ex.Message}" });
+                return StatusCode(500, new BaseResponse<object> { Success = false, Message = $"Lỗi hệ thống: {ex.Message}" });
             }
         }
 
@@ -56,14 +56,14 @@ namespace AIMockInterviewer.API.Controllers
             try
             {
                 var userId = GetUserId();
-                dynamic result = await _interviewService.ChatAsync(userId, request);
+                var result = await _interviewService.ChatAsync(userId, request);
 
-                if (result.Success == false) return BadRequest(result);
+                if (!result.Success) return BadRequest(result);
                 return Ok(result);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { Success = false, Message = $"Lỗi hệ thống: {ex.Message}" });
+                return StatusCode(500, new BaseResponse<object> { Success = false, Message = $"Lỗi hệ thống: {ex.Message}" });
             }
         }
 
@@ -72,13 +72,12 @@ namespace AIMockInterviewer.API.Controllers
         {
             try
             {
-                // Gợi ý không cần lưu DB, nên gọi thẳng qua Google Gemini luôn cho tốc độ nhanh
                 string hintJson = await _aiService.GetHintForQuestion(request.CurrentQuestion, "Nội dung JD");
                 return Ok(hintJson);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { Success = false, Message = $"Lỗi AI: {ex.Message}" });
+                return StatusCode(500, new BaseResponse<object> { Success = false, Message = $"Lỗi AI: {ex.Message}" });
             }
         }
 
@@ -88,14 +87,14 @@ namespace AIMockInterviewer.API.Controllers
             try
             {
                 var userId = GetUserId();
-                dynamic result = await _interviewService.EndSessionAsync(userId, sessionId);
+                var result = await _interviewService.EndSessionAsync(userId, sessionId);
 
-                if (result.Success == false) return BadRequest(result);
+                if (!result.Success) return BadRequest(result);
                 return Ok(result);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { Success = false, Message = $"Lỗi hệ thống: {ex.Message}" });
+                return StatusCode(500, new BaseResponse<object> { Success = false, Message = $"Lỗi hệ thống: {ex.Message}" });
             }
         }
 
@@ -105,40 +104,34 @@ namespace AIMockInterviewer.API.Controllers
             try
             {
                 var userId = GetUserId();
-                dynamic result = await _interviewService.ResumeSessionAsync(userId, sessionId);
+                var result = await _interviewService.ResumeSessionAsync(userId, sessionId);
 
-                if (result.Success == false)
-                {
-                    return BadRequest(result);
-                }
+                if (!result.Success) return BadRequest(result);
 
                 return Ok(result);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { Success = false, Message = $"Lỗi hệ thống: {ex.Message}" });
+                return StatusCode(500, new BaseResponse<object> { Success = false, Message = $"Lỗi hệ thống: {ex.Message}" });
             }
         }
 
-        // Khai báo class phụ này ở ngoài hoặc trong namespace đều được (tốt nhất là để dưới cùng file Controller)
         public class GeneralChatRequestDto
         {
             public string UserMessage { get; set; } = null!;
         }
 
-        [AllowAnonymous] 
+        [AllowAnonymous]
         [HttpPost("general-chat")]
         public async Task<IActionResult> GeneralChat([FromBody] GeneralChatRequestDto request)
         {
             try
             {
                 if (request == null || string.IsNullOrWhiteSpace(request.UserMessage))
-                    return BadRequest(new { Success = false, Message = "Tin nhắn không được để trống." });
+                    return BadRequest(new BaseResponse<object> { Success = false, Message = "Tin nhắn không được để trống." });
 
-                
                 string jsonResponse = await _aiService.GetGeneralChatResponse(request.UserMessage);
 
-               
                 string finalReply = "";
                 try
                 {
@@ -148,15 +141,14 @@ namespace AIMockInterviewer.API.Controllers
                 }
                 catch
                 {
-                    finalReply = jsonResponse; 
+                    finalReply = jsonResponse;
                 }
 
                 return Ok(new { response = finalReply });
             }
             catch (Exception ex)
             {
-                
-                return StatusCode(500, new { Success = false, Message = $"Lỗi hệ thống AI: {ex.Message}" });
+                return StatusCode(500, new BaseResponse<object> { Success = false, Message = $"Lỗi hệ thống AI: {ex.Message}" });
             }
         }
     }

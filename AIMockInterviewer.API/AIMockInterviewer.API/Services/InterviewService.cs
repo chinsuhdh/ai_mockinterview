@@ -2,6 +2,7 @@
 using AIMockInterviewer.API.Interfaces;
 using AIMockInterviewer.API.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using System.Text.Json;
 using UglyToad.PdfPig;
 
@@ -13,20 +14,26 @@ namespace AIMockInterviewer.API.Services
         private readonly AiInterviewerService _aiService;
         private readonly IEmailService _emailService;
         private readonly PdfReportService _pdfService;
+        private readonly IMemoryCache _cache;
+        private readonly InterviewAnalyticsService _analyticsService; // Đã thêm Analytics
 
         public InterviewService(
             AppDbContext context,
             AiInterviewerService aiService,
             IEmailService emailService,
-            PdfReportService pdfService)
+            PdfReportService pdfService,
+            IMemoryCache cache,
+            InterviewAnalyticsService analyticsService) // Inject qua Constructor
         {
             _context = context;
             _aiService = aiService;
             _emailService = emailService;
             _pdfService = pdfService;
+            _cache = cache;
+            _analyticsService = analyticsService;
         }
 
-        public async Task<object> StartSessionAsync(Guid userId, StartInterviewRequest request)
+        public async Task<BaseResponse<StartInterviewData>> StartSessionAsync(Guid userId, StartInterviewRequest request)
         {
             var currentMonth = DateTime.UtcNow.Month;
             var currentYear = DateTime.UtcNow.Year;
@@ -35,13 +42,13 @@ namespace AIMockInterviewer.API.Services
 
             int maxInterviews = activeSub != null ? activeSub.Plan.MaxInterviewsPerMonth : 3;
             if (maxInterviews != -1 && sessionsThisMonth >= maxInterviews)
-                return new { Success = false, Message = $"Bạn đã hết {maxInterviews} lượt phỏng vấn miễn phí trong tháng. Vui lòng nâng cấp gói Premium." };
+                return new BaseResponse<StartInterviewData> { Success = false, Message = $"Bạn đã hết {maxInterviews} lượt phỏng vấn miễn phí trong tháng. Vui lòng nâng cấp gói Premium." };
 
             string cvText = "Ứng viên không cung cấp CV.";
             if (request.CvFile != null && request.CvFile.Length > 0)
             {
                 if (!request.CvFile.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
-                    return new { Success = false, Message = "Hệ thống chỉ hỗ trợ file PDF cho CV." };
+                    return new BaseResponse<StartInterviewData> { Success = false, Message = "Hệ thống chỉ hỗ trợ file PDF cho CV." };
 
                 using var stream = request.CvFile.OpenReadStream();
                 using var document = PdfDocument.Open(stream);
@@ -52,7 +59,7 @@ namespace AIMockInterviewer.API.Services
             if (request.JdFile != null && request.JdFile.Length > 0)
             {
                 if (!request.JdFile.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
-                    return new { Success = false, Message = "Hệ thống chỉ hỗ trợ file PDF cho JD." };
+                    return new BaseResponse<StartInterviewData> { Success = false, Message = "Hệ thống chỉ hỗ trợ file PDF cho JD." };
 
                 using var stream = request.JdFile.OpenReadStream();
                 using var document = PdfDocument.Open(stream);
@@ -65,7 +72,7 @@ namespace AIMockInterviewer.API.Services
 
             if (cvText == "Ứng viên không cung cấp CV." && jdText.StartsWith("Không có mô tả công việc"))
             {
-                return new { Success = false, Message = "Vui lòng cung cấp ít nhất CV hoặc Mô tả công việc (JD) để bắt đầu." };
+                return new BaseResponse<StartInterviewData> { Success = false, Message = "Vui lòng cung cấp ít nhất CV hoặc Mô tả công việc (JD) để bắt đầu." };
             }
 
             string finalJdTitle = string.IsNullOrWhiteSpace(request.JdTitle) ? "Phỏng vấn Đánh giá năng lực" : request.JdTitle;
@@ -101,36 +108,58 @@ namespace AIMockInterviewer.API.Services
                 questions.Add(new QuestionItem { vi = "Bạn hãy giới thiệu bản thân nhé.", en = "Please introduce yourself." });
             }
 
+            // Đảm bảo phần này luôn chạy
             var firstQ = questions.FirstOrDefault();
+            if (firstQ == null)
+            {
+                // Nếu AI không trả về câu hỏi, hãy gán mặc định để tránh lỗi rỗng
+                firstQ = new QuestionItem { vi = "Chào bạn, hãy bắt đầu giới thiệu bản thân nhé.", en = "Hello, please introduce yourself." };
+            }
 
-            _context.InterviewMessages.Add(new InterviewMessage { InterviewSessionId = session.Id, SenderRole = "AI", MessageContent = firstQ?.vi ?? "" });
+            // Lưu AI message
+            var aiMessage = new InterviewMessage { InterviewSessionId = session.Id, SenderRole = "AI", MessageContent = firstQ.vi };
+            _context.InterviewMessages.Add(aiMessage);
             await _context.SaveChangesAsync();
 
-            return new
+            // KHỞI TẠO CACHE CHUẨN: Phải có cả System và AI
+            var initialHistory = new List<string> {
+    $"System: {contextMessage.MessageContent}",
+    $"AI: {firstQ.vi}"
+};
+            _cache.Set($"history_{session.Id}", initialHistory, TimeSpan.FromHours(2));
+
+            return new BaseResponse<StartInterviewData>
             {
                 Success = true,
                 Message = "Khởi tạo phỏng vấn thành công.",
-                SessionId = session.Id,
-                FirstQuestion = firstQ?.vi,
-                FirstQuestionEn = firstQ?.en,
-                Script = questions
+                Data = new StartInterviewData
+                {
+                    SessionId = session.Id,
+                    FirstQuestion = firstQ?.vi,
+                    FirstQuestionEn = firstQ?.en,
+                    Script = questions
+                }
             };
         }
 
-        public async Task<object> ChatAsync(Guid userId, ChatRequest request)
+        public async Task<BaseResponse<ChatResponseData>> ChatAsync(Guid userId, ChatRequest request)
         {
             var session = await _context.InterviewSessions.Include(s => s.JobDescription).FirstOrDefaultAsync(s => s.Id == request.SessionId && s.UserId == userId);
-            if (session == null || session.Status != "In-Progress") return new { Success = false, Message = "Phiên phỏng vấn không hợp lệ hoặc đã kết thúc." };
+            if (session == null || session.Status != "In-Progress")
+                return new BaseResponse<ChatResponseData> { Success = false, Message = "Phiên phỏng vấn không hợp lệ hoặc đã kết thúc." };
 
             _context.InterviewMessages.Add(new InterviewMessage { InterviewSessionId = session.Id, SenderRole = "User", MessageContent = request.UserMessage });
             await _context.SaveChangesAsync();
 
-            var historyList = await _context.InterviewMessages
-                .Where(m => m.InterviewSessionId == session.Id)
-                .OrderByDescending(m => m.CreatedAt).Take(15)
-                .OrderBy(m => m.CreatedAt)
-                .Select(m => $"{m.SenderRole}: {m.MessageContent}")
-                .ToListAsync();
+            string cacheKey = $"history_{session.Id}";
+            if (!_cache.TryGetValue(cacheKey, out List<string> historyList))
+            {
+                historyList = await _context.InterviewMessages
+                    .Where(m => m.InterviewSessionId == session.Id)
+                    .OrderBy(m => m.CreatedAt).Take(20)
+                    .Select(m => $"{m.SenderRole}: {m.MessageContent}")
+                    .ToListAsync();
+            }
 
             string aiJson = await _aiService.GenerateInterviewResponse(request.UserMessage, session.JobDescription.Content, historyList, request.Language);
 
@@ -154,10 +183,34 @@ namespace AIMockInterviewer.API.Services
             _context.InterviewMessages.Add(new InterviewMessage { InterviewSessionId = session.Id, SenderRole = "AI", MessageContent = nextQuestion });
             await _context.SaveChangesAsync();
 
-            return new { Success = true, Response = nextQuestion, Feedback = feedback, NextQuestionEn = nextQuestionEn };
+            historyList.Add($"User: {request.UserMessage}");
+            historyList.Add($"AI: {nextQuestion}");
+
+            // FIX CẮT LỊCH SỬ CHUẨN: Giữ lại System Context ở vị trí đầu tiên
+            if (historyList.Count > 20)
+            {
+                var systemPrompt = historyList.First();
+                var recentChat = historyList.Skip(historyList.Count - 19).ToList();
+
+                historyList = new List<string> { systemPrompt };
+                historyList.AddRange(recentChat);
+            }
+
+            _cache.Set(cacheKey, historyList, TimeSpan.FromHours(2));
+
+            return new BaseResponse<ChatResponseData>
+            {
+                Success = true,
+                Data = new ChatResponseData
+                {
+                    Response = nextQuestion,
+                    Feedback = feedback,
+                    NextQuestionEn = nextQuestionEn
+                }
+            };
         }
 
-        public async Task<object> EndSessionAsync(Guid userId, Guid sessionId)
+        public async Task<BaseResponse<EndSessionData>> EndSessionAsync(Guid userId, Guid sessionId)
         {
             var session = await _context.InterviewSessions
                 .Include(s => s.JobDescription)
@@ -166,28 +219,28 @@ namespace AIMockInterviewer.API.Services
                 .FirstOrDefaultAsync(s => s.Id == sessionId && s.UserId == userId);
 
             if (session == null)
-                return new { Success = false, Message = "Phiên phỏng vấn không hợp lệ." };
+                return new BaseResponse<EndSessionData> { Success = false, Message = "Phiên phỏng vấn không hợp lệ." };
 
             if (session.Status == "Completed")
-                return new { Success = false, Message = "Phiên phỏng vấn này đã kết thúc và được chấm điểm rồi." };
+                return new BaseResponse<EndSessionData> { Success = false, Message = "Phiên phỏng vấn này đã kết thúc và được chấm điểm rồi." };
 
-            var historyList = await _context.InterviewMessages
+            var fullTranscriptList = await _context.InterviewMessages
                 .Where(m => m.InterviewSessionId == sessionId)
                 .OrderBy(m => m.CreatedAt)
                 .Select(m => $"{m.SenderRole}: {m.MessageContent}")
                 .ToListAsync();
 
-            if (historyList.Count <= 2)
+            if (fullTranscriptList.Count <= 2)
             {
                 session.Status = "Failed";
                 session.EndedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
-                return new { Success = false, Message = "Buổi phỏng vấn quá ngắn để đánh giá. Đã hủy phiên." };
+                return new BaseResponse<EndSessionData> { Success = false, Message = "Buổi phỏng vấn quá ngắn để đánh giá. Đã hủy phiên." };
             }
 
             try
             {
-                string aiJson = await _aiService.EvaluateInterviewAsync(session.JobDescription.Content, historyList);
+                string aiJson = await _aiService.EvaluateInterviewAsync(session.JobDescription.Content, fullTranscriptList);
                 string cleanJson = aiJson.Replace("```json", "").Replace("```", "").Trim();
 
                 var evaluation = JsonSerializer.Deserialize<AiEvaluationResponse>(cleanJson);
@@ -203,7 +256,6 @@ namespace AIMockInterviewer.API.Services
                     GeneralComment = evaluation.generalComment
                 };
                 _context.InterviewFeedbacks.Add(feedback);
-                await _context.SaveChangesAsync();
 
                 var criteriaList = new List<FeedbackCriterion>();
                 foreach (var crit in evaluation.criteria)
@@ -220,11 +272,21 @@ namespace AIMockInterviewer.API.Services
                 }
                 await _context.SaveChangesAsync();
 
+                // --- TÍCH HỢP ANALYTICS ĐẾM TỪ ĐỆM ---
+                var userOnlyMessages = fullTranscriptList
+                    .Where(m => m.StartsWith("User:"))
+                    .Select(m => m.Replace("User:", "").Trim());
+
+                string combinedUserTranscript = string.Join(" ", userOnlyMessages);
+                var analyticsResult = _analyticsService.AnalyzeFillerWords(combinedUserTranscript, "vi");
+                // ------------------------------------
+
                 if (session.User != null && !string.IsNullOrWhiteSpace(session.User.Email))
                 {
                     string candidateName = session.User.UserProfile?.FullName ?? "Ứng viên";
                     string jobTitle = session.JobDescription?.Title ?? "Vị trí phỏng vấn";
 
+                    // Chỗ này nếu bạn muốn đẩy thống kê Filler Words vào file PDF thì thêm tham số analyticsResult vào hàm GenerateInterviewReport
                     byte[] pdfBytes = _pdfService.GenerateInterviewReport(
                         candidateName,
                         jobTitle,
@@ -238,7 +300,8 @@ namespace AIMockInterviewer.API.Services
                         <h3>Chào {candidateName},</h3>
                         <p>Buổi phỏng vấn mô phỏng của bạn cho vị trí <strong>{jobTitle}</strong> đã hoàn tất.</p>
                         <p>Điểm đánh giá tổng quan: <strong>{evaluation.overallScore}/100</strong>.</p>
-                        <p>Vui lòng xem file PDF đính kèm để biết chi tiết nhận xét và cách cải thiện kỹ năng của bạn nhé.</p>
+                        <p><em>Phân tích giọng nói: {analyticsResult.EvaluationMessage} (Bạn dùng tổng cộng {analyticsResult.TotalFillerWords} từ đệm)</em></p>
+                        <p>Vui lòng xem file PDF đính kèm để biết chi tiết nhận xét và cách cải thiện kỹ năng.</p>
                         <p>Trân trọng,<br>Đội ngũ AI Mock Interviewer.</p>";
 
                     _ = _emailService.SendEmailWithAttachmentAsync(
@@ -250,15 +313,26 @@ namespace AIMockInterviewer.API.Services
                     );
                 }
 
-                return new { Success = true, Message = "Đã kết thúc và chấm điểm thành công.", Data = evaluation };
+                _cache.Remove($"history_{sessionId}");
+
+                return new BaseResponse<EndSessionData>
+                {
+                    Success = true,
+                    Message = "Đã kết thúc và chấm điểm thành công.",
+                    Data = new EndSessionData
+                    {
+                        Evaluation = evaluation,
+                        Analytics = analyticsResult // Trả luôn về FE để vẽ biểu đồ nếu muốn
+                    }
+                };
             }
             catch (Exception ex)
             {
-                return new { Success = false, Message = $"Lỗi trong quá trình AI chấm điểm: {ex.Message}" };
+                return new BaseResponse<EndSessionData> { Success = false, Message = $"Lỗi trong quá trình AI chấm điểm: {ex.Message}" };
             }
         }
 
-        public async Task<object> ResumeSessionAsync(Guid userId, Guid sessionId)
+        public async Task<BaseResponse<ResumeSessionData>> ResumeSessionAsync(Guid userId, Guid sessionId)
         {
             var session = await _context.InterviewSessions
                 .Include(s => s.JobDescription)
@@ -266,27 +340,39 @@ namespace AIMockInterviewer.API.Services
                 .FirstOrDefaultAsync(s => s.Id == sessionId && s.UserId == userId);
 
             if (session == null)
-                return new { Success = false, Message = "Phiên phỏng vấn không tồn tại." };
+                return new BaseResponse<ResumeSessionData> { Success = false, Message = "Phiên phỏng vấn không tồn tại." };
 
             if (session.Status != "In-Progress")
-                return new { Success = false, Message = "Phiên phỏng vấn này đã kết thúc, chỉ có thể xem lịch sử.", IsCompleted = true };
+                return new BaseResponse<ResumeSessionData> { Success = false, Message = "Phiên phỏng vấn này đã kết thúc, chỉ có thể xem lịch sử.", Data = new ResumeSessionData { IsCompleted = true } };
+
+            string cacheKey = $"history_{sessionId}";
+            var historyList = session.InterviewMessages
+                .OrderBy(m => m.CreatedAt).Take(20)
+                .Select(m => $"{m.SenderRole}: {m.MessageContent}")
+                .ToList();
+
+            _cache.Set(cacheKey, historyList, TimeSpan.FromHours(2));
 
             var messages = session.InterviewMessages
                 .Where(m => m.SenderRole != "System")
                 .OrderBy(m => m.CreatedAt)
-                .Select(m => new
+                .Select(m => new MessageDto
                 {
                     Sender = m.SenderRole,
                     Content = m.MessageContent,
-                    Timestamp = m.CreatedAt
+                    Timestamp = m.CreatedAt ?? DateTime.UtcNow // Handle nullable DateTime
                 }).ToList();
 
-            return new
+            return new BaseResponse<ResumeSessionData>
             {
                 Success = true,
-                SessionId = session.Id,
-                JobTitle = session.JobDescription?.Title ?? "Phỏng vấn",
-                Messages = messages
+                Data = new ResumeSessionData
+                {
+                    SessionId = session.Id,
+                    JobTitle = session.JobDescription?.Title ?? "Phỏng vấn",
+                    IsCompleted = false,
+                    Messages = messages
+                }
             };
         }
     }
